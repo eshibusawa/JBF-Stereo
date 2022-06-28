@@ -1,0 +1,3 @@
+cupy
+opencv-python
+opencv-contrib-python
