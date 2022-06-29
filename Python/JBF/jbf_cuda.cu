@@ -65,24 +65,24 @@ extern "C" __global__ void applyJointBilateralFilter(
 	}
 
 	const int index = indexX + indexY * width;
-	short outVal = imageVal0, minDiff = 1 << 15;
+	short outVal = imageVal0;
+	unsigned short minDiff = 1 << 15;
 	// Joint Nearest Filter
 	if (sumWeight > 0.f)
 	{
-		short outVal0 = static_cast<short>(sumVal/sumWeight);
-		outVal = outVal0;
+		const short outVal0 = static_cast<short>(sumVal/sumWeight);
 		#pragma unroll 8
 		for (int j = -radiusV; j <= radiusV; j++)
 		{
 			#pragma unroll 8
 			for (int i = -radiusH; i <= radiusH; i++)
 			{
-    			short imageVal = tex2D<short>(texImage, indexX + i, indexY + j);
+    			const short imageVal = tex2D<short>(texImage, indexX + i, indexY + j);
                 if (imageVal < 0)
                 {
                     continue;
                 }
-    			short diff = abs(outVal0 - imageVal);
+    			const unsigned short diff = abs(outVal0 - imageVal);
 				outVal = (diff < minDiff) ? imageVal : outVal;
 				minDiff = (diff < minDiff) ? diff : minDiff;
 			}
