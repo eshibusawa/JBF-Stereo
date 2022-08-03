@@ -28,6 +28,8 @@ import os
 import numpy as np
 import cupy as cp
 
+from texture import create_texture_object
+
 class joint_bilateral_filter_parameters():
     def __init__(self):
         self.radius_h = 5
@@ -39,26 +41,6 @@ class joint_bilateral_filter_parameters():
 
 
 class joint_bilateral_filter():
-    @staticmethod
-    def create_texture_object(img_gpu):
-        if img_gpu.dtype == cp.uint8:
-            channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(8, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindUnsigned)
-        elif img_gpu.dtype == cp.int16:
-            channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(16, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindSigned)
-        else:
-            return None
-        img_gpu_2d = cp.cuda.texture.CUDAarray(channel_format_descriptor, img_gpu.shape[1], img_gpu.shape[0])
-        img_gpu_2d.copy_from(img_gpu)
-
-        img_rd = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray,
-            cuArr = img_gpu_2d)
-        img_td = cp.cuda.texture.TextureDescriptor(addressModes = (cp.cuda.runtime.cudaAddressModeBorder, cp.cuda.runtime.cudaAddressModeBorder),
-            filterMode=cp.cuda.runtime.cudaFilterModePoint,
-            readMode=cp.cuda.runtime.cudaReadModeElementType,
-            normalizedCoords = 0)
-        img_to = cp.cuda.texture.TextureObject(img_rd, img_td)
-        return img_to
-
     def __init__(self, param):
         self.compute_kernel(param)
         self.compile_module()
@@ -111,8 +93,8 @@ class joint_bilateral_filter():
         assert guide_img_gpu.flags.c_contiguous
         assert img_filtered_gpu.flags.c_contiguous
 
-        img_to = self.create_texture_object(img_gpu)
-        guide_img_to = self.create_texture_object(guide_img_gpu)
+        img_to = create_texture_object(img_gpu)
+        guide_img_to = create_texture_object(guide_img_gpu)
 
         sz_block = 32, 32
         sz_grid = math.ceil(img_filtered_gpu.shape[1] / sz_block[1]), math.ceil(img_filtered_gpu.shape[0] / sz_block[0])

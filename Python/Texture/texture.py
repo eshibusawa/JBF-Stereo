@@ -22,9 +22,26 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
-import sys
+import cupy as cp
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'IO'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'JBF'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'Texture'))
+def create_texture_object(img_gpu,
+    addressMode = cp.cuda.runtime.cudaAddressModeBorder,
+    filterMode = cp.cuda.runtime.cudaFilterModePoint,
+    readMode = cp.cuda.runtime.cudaReadModeElementType):
+    if img_gpu.dtype == cp.uint8:
+        channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(8, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindUnsigned)
+    elif img_gpu.dtype == cp.int16:
+        channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(16, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindSigned)
+    else:
+        return None
+    img_gpu_2d = cp.cuda.texture.CUDAarray(channel_format_descriptor, img_gpu.shape[1], img_gpu.shape[0])
+    img_gpu_2d.copy_from(img_gpu)
+
+    img_rd = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray,
+        cuArr = img_gpu_2d)
+    img_td = cp.cuda.texture.TextureDescriptor(addressModes = (addressMode, addressMode),
+        filterMode=filterMode,
+        readMode=readMode,
+        normalizedCoords = 0)
+    img_to = cp.cuda.texture.TextureObject(img_rd, img_td)
+    return img_to
