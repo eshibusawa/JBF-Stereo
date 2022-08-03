@@ -22,10 +22,13 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import math
 import os
 
 import numpy as np
 import cupy as cp
+
+from texture import create_texture_object
 
 def create_Hann_window(length):
     s = 2 * np.pi / (length - 1)
@@ -76,3 +79,34 @@ class phase_only_correlation():
         # upload Hann window
         self.upload_symbol(self.hann_window, 'g_HannWindow')
         self.upload_symbol(self.rotator, 'g_rotator', cp.complex64)
+
+    def get_transformed_image(self, img):
+        assert img.dtype == np.uint8
+
+        # upload images
+        img_gpu = cp.array(img, dtype=cp.uint8)
+        img_transformed_gpu = cp.zeros((img_gpu.shape[0], img_gpu.shape[1], self.window_width), dtype=cp.complex64)
+
+        assert img_gpu.flags.c_contiguous
+        assert img_transformed_gpu.flags.c_contiguous
+
+        img_to = create_texture_object(img_gpu, addressMode = cp.cuda.runtime.cudaAddressModeBorder,
+            filterMode = cp.cuda.runtime.cudaFilterModePoint,
+            readMode = cp.cuda.runtime.cudaReadModeElementType)
+
+        sz_block = 32, 32
+        sz_grid = math.ceil(img_gpu.shape[1] / sz_block[1]), math.ceil(img_gpu.shape[0] / sz_block[0])
+        # call the kernel
+        pocfunc = self.module.get_function("applyTransformation")
+        pocfunc(
+            block=sz_block,
+            grid=sz_grid,
+            args=(
+                img_transformed_gpu.data,
+                img_to,
+                img_transformed_gpu.shape[1],
+                img_transformed_gpu.shape[0]
+            )
+        )
+
+        return img_transformed_gpu

@@ -90,3 +90,34 @@ __device__ void iFFT(const float2 *input, float2 *output)
 	}
 	_FFT(-1, output);
 }
+
+extern "C" __global__ void applyTransformation(
+	float2* output,
+	cudaTextureObject_t texImage,
+	int width,
+	int height)
+{
+	const int indexX = blockIdx.x * blockDim.x + threadIdx.x;
+	const int indexY = blockIdx.y * blockDim.y + threadIdx.y;
+	if ((indexX >= width) || (indexY >= height))
+	{
+		return;
+	}
+
+	const int index = indexX * POC_WINDOW_WIDTH + indexY * (width * POC_WINDOW_WIDTH);
+	# pragma unroll
+	for(int i = 0; i < POC_WINDOW_WIDTH; i++)
+	{
+		int indexT = indexX + i - (POC_WINDOW_WIDTH / 2);
+		// border mirror
+		// indexT = (indexT < 0) ? -indexT : indexT;
+		// indexT = (indexT >= width) ? (width - (indexT % width) - 2) : indexT;
+#if POC_USE_HANN_WINDOW
+		output[index + i].x = g_HannWindow[i] * tex2D<unsigned char>(texImage, indexT, indexY);
+#else
+		output[index + i].x = tex2D<unsigned char>(texImage, indexT, indexY);
+#endif
+		output[index + i].y = 0;
+	}
+	_FFT(1, output + index);
+}

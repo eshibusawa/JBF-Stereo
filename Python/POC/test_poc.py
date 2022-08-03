@@ -26,8 +26,10 @@ from unittest import TestCase
 from nose.tools import ok_
 import numpy as np
 import cupy as cp
+import scipy.signal
 from scipy.signal.windows import hann
 
+import add_path
 from poc import create_Hann_window
 from poc import phase_only_correlation_parameters
 from poc import phase_only_correlation
@@ -88,3 +90,30 @@ class POCTestCase(TestCase):
             )
             err = np.abs(input - np.real(input_gpu.get()))
             ok_(np.max(err) < 1e-5)
+
+    def stft_test(self):
+        length = 1024
+        NN = 4, 8, 16, 32, 64
+        is_use_window = False, True
+        for N in NN:
+            for f in is_use_window:
+                param = phase_only_correlation_parameters()
+                param.window_width = N
+                param.is_use_hann_window = f
+                poc = phase_only_correlation(param)
+
+                input = (255 * np.random.rand(length)).astype(np.uint8).reshape(1, -1)
+                output_gpu = poc.get_transformed_image(input)
+
+                if param.is_use_hann_window:
+                    window = scipy.signal.get_window('hann', param.window_width, False)
+                else:
+                    window = scipy.signal.get_window('boxcar', param.window_width, False)
+                scale = np.sum(window)
+
+                _, _, output_ref = scipy.signal.stft(input[0], window=window, nperseg = param.window_width, \
+                                noverlap = param.window_width - 1, return_onesided = False)
+                output_ref = output_ref[:,0:input.shape[1]].T
+
+                err = np.abs(output_ref - output_gpu[0].get()/scale)
+                ok_(np.max(err) < 5e-5)
