@@ -186,6 +186,10 @@ extern "C" __global__ void getPhaseOnlyCorrelation(
 		tmp[i].y *= scale;
 	}
 
+#if POC_USE_DC_SUPPRESSION
+	tmp[0].x = tmp[0].y = 0;
+#endif
+
 	// iFFT / FFTShift
 	_FFT(-1, tmp);
 	# pragma unroll

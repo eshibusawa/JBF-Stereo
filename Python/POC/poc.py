@@ -48,6 +48,7 @@ class phase_only_correlation_parameters():
         self.averaging_window_height = 7
         self.is_use_hann_window = False
         self.is_spectrum_weighting = False
+        self.is_use_dc_suppression = False
 
 class phase_only_correlation():
     def __init__(self, param, pixel_type=np.uint8):
@@ -55,6 +56,7 @@ class phase_only_correlation():
         self.averaging_window_height = param.averaging_window_height
         self.is_use_hann_window = param.is_use_hann_window
         self.is_spectrum_weighting = param.is_spectrum_weighting
+        self.is_use_dc_suppression = param.is_use_dc_suppression
         self.pixel_type = pixel_type
 
         self.compute_constants()
@@ -81,6 +83,7 @@ class phase_only_correlation():
         cuda_source = cuda_source.replace('POC_AVERAGING_WINDOW_HEIGHT', str(self.averaging_window_height))
         cuda_source = cuda_source.replace('POC_USE_HANN_WINDOW', str(1 if self.is_use_hann_window else 0))
         cuda_source = cuda_source.replace('POC_USE_SPECTRUM_WEIGHTING', str(1 if self.is_spectrum_weighting else 0))
+        cuda_source = cuda_source.replace('POC_USE_DC_SUPPRESSION', str(1 if self.is_use_dc_suppression else 0))
         cuda_source = cuda_source.replace('POC_PIXEL_TYPE', 'float' if self.pixel_type == np.float32 else 'unsigned char')
         self.module = cp.RawModule(code=cuda_source)
         self.module.compile()
