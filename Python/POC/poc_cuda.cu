@@ -113,11 +113,146 @@ extern "C" __global__ void applyTransformation(
 		// indexT = (indexT < 0) ? -indexT : indexT;
 		// indexT = (indexT >= width) ? (width - (indexT % width) - 2) : indexT;
 #if POC_USE_HANN_WINDOW
-		output[index + i].x = g_HannWindow[i] * tex2D<unsigned char>(texImage, indexT, indexY);
+		output[index + i].x = g_HannWindow[i] * tex2D<POC_PIXEL_TYPE>(texImage, indexT, indexY);
 #else
-		output[index + i].x = tex2D<unsigned char>(texImage, indexT, indexY);
+		output[index + i].x = tex2D<POC_PIXEL_TYPE>(texImage, indexT, indexY);
 #endif
 		output[index + i].y = 0;
 	}
 	_FFT(1, output + index);
+}
+
+extern "C" __global__ void getPhaseOnlyCorrelation(
+	float* output,
+	const float2* __restrict__ inputRef,
+	const float2* __restrict__ inputOther,
+	const int* __restrict__ disparity,
+	int width,
+	int height)
+{
+	const int indexX = blockIdx.x * blockDim.x + threadIdx.x;
+	const int indexY = blockIdx.y * blockDim.y + threadIdx.y;
+	if ((indexX >= width) || (indexY >= height))
+	{
+		return;
+	}
+
+	const int index = indexX * POC_WINDOW_WIDTH + indexY * (width * POC_WINDOW_WIDTH);
+	int indexRef = 0, indexOther = 0;
+	// compute complex correlation
+	float2 tmp[POC_WINDOW_WIDTH] = {};
+	# pragma unroll
+	for(int j = -POC_AVERAGING_WINDOW_HEIGHT/2; j <= POC_AVERAGING_WINDOW_HEIGHT/2; j++)
+	{
+		int indexYRef = indexY + j;
+		indexYRef = (indexYRef < 0) ? 0 : indexYRef;
+		indexYRef = (indexYRef >= height) ? height - 1 : indexYRef;
+		int indexXOther = indexX - disparity[indexX + indexY * width];
+		indexXOther = (indexXOther < 0) ? 0 : indexXOther;
+
+		indexRef = indexX * POC_WINDOW_WIDTH + indexYRef * (width * POC_WINDOW_WIDTH);
+		indexOther = indexXOther * POC_WINDOW_WIDTH + indexYRef * (width * POC_WINDOW_WIDTH);
+
+#if POC_USE_SPECTRUM_WEIGHTING
+		# pragma unroll
+		for(int i = 0, ii = POC_WINDOW_WIDTH - 1; i < POC_WINDOW_WIDTH/4; i++, ii--)
+		{
+			tmp[i].x = fmaf(inputRef[indexRef + i].x, inputOther[indexOther + i].x, tmp[i].x);
+			tmp[i].x = fmaf(inputRef[indexRef + i].y, inputOther[indexOther + i].y, tmp[i].x);
+			tmp[i].y = fmaf(inputRef[indexRef + i].y, inputOther[indexOther + i].x, tmp[i].y);
+			tmp[i].y = fmaf(inputRef[indexRef + i].x, -inputOther[indexOther + i].y, tmp[i].y);
+			tmp[ii].x = fmaf(inputRef[indexRef + ii].x, inputOther[indexOther + ii].x, tmp[ii].x);
+			tmp[ii].x = fmaf(inputRef[indexRef + ii].y, inputOther[indexOther + ii].y, tmp[ii].x);
+			tmp[ii].y = fmaf(inputRef[indexRef + ii].y, inputOther[indexOther + ii].x, tmp[ii].y);
+			tmp[ii].y = fmaf(inputRef[indexRef + ii].x, -inputOther[indexOther + ii].y, tmp[ii].y);
+		}
+#else
+		# pragma unroll
+		for(int i = 0; i < POC_WINDOW_WIDTH; i++)
+		{
+			tmp[i].x = fmaf(inputRef[indexRef + i].x, inputOther[indexOther + i].x, tmp[i].x);
+			tmp[i].x = fmaf(inputRef[indexRef + i].y, inputOther[indexOther + i].y, tmp[i].x);
+			tmp[i].y = fmaf(inputRef[indexRef + i].y, inputOther[indexOther + i].x, tmp[i].y);
+			tmp[i].y = fmaf(inputRef[indexRef + i].x, -inputOther[indexOther + i].y, tmp[i].y);
+		}
+#endif
+	}
+	float scale = 0;
+	# pragma unroll
+	for(int i = 0; i < POC_WINDOW_WIDTH; i++)
+	{
+		scale = 1 / (hypotf(tmp[i].x, tmp[i].y) + 1E-7) / POC_WINDOW_WIDTH;
+		tmp[i].x *= scale;
+		tmp[i].y *= scale;
+	}
+
+	// iFFT / FFTShift
+	_FFT(-1, tmp);
+	# pragma unroll
+	for(int i = 0; i < POC_WINDOW_WIDTH/2; i++)
+	{
+		output[index + i] = tmp[i + POC_WINDOW_WIDTH/2].x;
+		output[index + i + POC_WINDOW_WIDTH/2] = tmp[i].x;
+	}
+}
+
+extern "C" __global__ void getDisparity(
+	float* output,
+	float* outputValue,
+	const float* __restrict__ input,
+	int width,
+	int height)
+{
+	const int indexX = blockIdx.x * blockDim.x + threadIdx.x;
+	const int indexY = blockIdx.y * blockDim.y + threadIdx.y;
+	if ((indexX >= width) || (indexY >= height))
+	{
+		return;
+	}
+
+	const int index = indexX * POC_WINDOW_WIDTH + indexY * (width * POC_WINDOW_WIDTH);
+	const int indexD = indexX + indexY * width;
+	float maxValue = -(1 << 30);
+	int maxIndex = 0;
+	# pragma unroll
+	for(int i = 0; i < POC_WINDOW_WIDTH; i++)
+	{
+		if (input[index + i] > maxValue)
+		{
+			maxValue = input[index + i];
+			maxIndex = i;
+		}
+	}
+	output[indexD] = maxIndex - POC_WINDOW_WIDTH/2;
+	outputValue[indexD] = maxValue;
+
+	if ((maxIndex != 0) && (maxIndex != POC_WINDOW_WIDTH -1))
+	{
+		float v = input[index + maxIndex - 1] - input[index + maxIndex + 1];
+#if POC_USE_SPECTRUM_WEIGHTING
+		float u = input[index + maxIndex - 1] + input[index + maxIndex + 1];
+#else
+		float u = input[index + maxIndex - 1] + input[index + maxIndex + 1] + 2 * maxValue;
+#endif
+		float delta = v/u;
+		output[indexD] -= delta;
+		float pd = -static_cast<float>(3.141592653589793) * delta;
+#if POC_USE_SPECTRUM_WEIGHTING
+		float flac = sinf(pd/2);
+#else
+		float flac = sinf(pd);
+#endif
+		if (fabsf(flac) < 1E-7)
+		{
+#if POC_USE_SPECTRUM_WEIGHTING
+			outputValue[indexD] = 2 * maxValue;
+#else
+			outputValue[indexD] = maxValue;
+#endif
+		}
+		else
+		{
+			outputValue[indexD] = maxValue * pd / flac;
+		}
+	}
 }

@@ -33,7 +33,7 @@ from jbf import joint_bilateral_filter_parameters as jbf_param
 def disparity_to_colormap(disparity, min_d, max_d):
     mask = disparity > 0
     delta = max_d - min_d
-    index = np.round(np.maximum(0, np.minimum(disparity - min_d, delta) / delta) * 255).astype(np.int)
+    index = np.round(np.maximum(0, np.minimum(disparity - min_d, delta) / delta) * 255).astype(np.int32)
     img = (jet[index] * 255).astype(np.uint8)
     img[~mask] = (0,0,0)
     return img

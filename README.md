@@ -8,6 +8,8 @@ The refinement filter consists of joint bilateral filtering and joint nearest fi
 ***JBF-Stereo*** requires the following libraries:
 + cupy
 + opencv
++ nose (only for testing)
++ scipy (only for testing)
 ```sh
 pip install -r requirement.txt
 ```

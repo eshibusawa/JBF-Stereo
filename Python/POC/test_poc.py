@@ -117,3 +117,39 @@ class POCTestCase(TestCase):
 
                 err = np.abs(output_ref - output_gpu[0].get()/scale)
                 ok_(np.max(err) < 5e-5)
+
+    def phase_only_correlation_test(self):
+        pixel_types = np.uint8, np.float32
+        NN = 16, 32, 64
+        for p in pixel_types:
+            for N in NN:
+                length = 2 * N
+                shift_ref = N//8
+                param = phase_only_correlation_parameters()
+                param.window_width = N
+                param.averaging_window_height = 1
+                param.is_use_hann_window = False
+                param.is_spectrum_weighting = False
+
+                poc = phase_only_correlation(param, p)
+
+                input1 = (255 * np.random.rand(length)).astype(p).reshape(1, -1)
+                input2 = np.roll(input1, -shift_ref)
+                disparity = np.zeros(input1.shape, dtype=np.int32)
+
+                pocf_gpu = poc.get_phase_only_correlation(input1, input2, disparity)
+                x, y = pocf_gpu.shape[1]//2, pocf_gpu.shape[0]//2
+                pocf = pocf_gpu[y, x, :].get()
+
+                input1_F = np.fft.fft(input1[y, x - N//2: x + N//2])
+                input2_F = np.fft.fft(input2[y, x - N//2: x + N//2])
+                pocf_ref = input1_F * np.conj(input2_F)
+                pocf_ref = pocf_ref / (np.abs(pocf_ref) + 1E-7)
+                pocf_ref = np.fft.ifft(pocf_ref)
+                pocf_ref = np.fft.fftshift(pocf_ref)
+
+                err = np.abs(pocf_ref - pocf)
+                ok_(np.max(err) < 2e-7)
+
+                shift = int(np.argmax(pocf) - (N//2))
+                ok_(shift_ref == shift)

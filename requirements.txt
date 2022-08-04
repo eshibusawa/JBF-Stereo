@@ -1,3 +1,5 @@
 cupy
+nose
 opencv-python
 opencv-contrib-python
+scipy
