@@ -204,6 +204,7 @@ extern "C" __global__ void getDisparity(
 	float* output,
 	float* outputValue,
 	const float* __restrict__ input,
+	const int* __restrict__ disparity,
 	int width,
 	int height)
 {
@@ -227,7 +228,7 @@ extern "C" __global__ void getDisparity(
 			maxIndex = i;
 		}
 	}
-	output[indexD] = maxIndex - POC_WINDOW_WIDTH/2;
+	output[indexD] = disparity[indexD] + maxIndex - POC_WINDOW_WIDTH/2;
 	outputValue[indexD] = maxValue;
 
 	if ((maxIndex != 0) && (maxIndex != POC_WINDOW_WIDTH -1))

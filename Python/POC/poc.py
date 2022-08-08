@@ -44,6 +44,7 @@ def check_two_power(val):
 
 class phase_only_correlation_parameters():
     def __init__(self):
+        self.max_disparity = 128
         self.window_width = 16
         self.averaging_window_height = 7
         self.is_use_hann_window = False
@@ -159,17 +160,19 @@ class phase_only_correlation():
                 img_ref_F.shape[0]
             )
         )
+        self.disparity_gpu = disparity_gpu
+        self.poc_gpu = poc_gpu
 
         return poc_gpu
 
-    def get_disparity(self, poc):
-        disparity_gpu = cp.zeros(poc.shape[:2], dtype=cp.float32)
-        correlation_value_gpu = cp.zeros(poc.shape[:2], dtype=cp.float32)
-        assert poc.flags.c_contiguous
+    def get_disparity(self):
+        disparity_gpu = cp.zeros(self.poc_gpu.shape[:2], dtype=cp.float32)
+        correlation_value_gpu = cp.zeros(self.poc_gpu.shape[:2], dtype=cp.float32)
+        assert self.poc_gpu.flags.c_contiguous
         assert disparity_gpu.flags.c_contiguous
 
         sz_block = 32, 32
-        sz_grid = math.ceil(poc.shape[1] / sz_block[1]), math.ceil(poc.shape[0] / sz_block[0])
+        sz_grid = math.ceil(self.poc_gpu.shape[1] / sz_block[1]), math.ceil(self.poc_gpu.shape[0] / sz_block[0])
         # call the kernel
         pocfunc = self.module.get_function("getDisparity")
         pocfunc(
@@ -178,7 +181,8 @@ class phase_only_correlation():
             args=(
                 disparity_gpu.data,
                 correlation_value_gpu.data,
-                poc.data,
+                self.poc_gpu.data,
+                self.disparity_gpu.data,
                 disparity_gpu.shape[1],
                 disparity_gpu.shape[0]
             )
