@@ -27,4 +27,5 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'IO'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'JBF'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'PM'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'Texture'))

@@ -65,7 +65,7 @@ class image_pyramid():
             img_gpu_transformed = cp.empty((img_gpu.shape[0]//2, img_gpu.shape[1]//2), dtype=img_gpu.dtype)
 
             sz_block = 32, 32
-            sz_grid = math.ceil(img_gpu.shape[1] / sz_block[1]), math.ceil(img_gpu.shape[0] / sz_block[0])
+            sz_grid = math.ceil(img_gpu.shape[1] / sz_block[0]), math.ceil(img_gpu.shape[0] / sz_block[1])
             # call the kernel
             pocfunc = self.module.get_function("downSampling")
             pocfunc(
@@ -93,7 +93,7 @@ class image_pyramid():
         du_gpu = cp.zeros(shape, dtype=d_gpu.dtype)
 
         sz_block = 32, 32
-        sz_grid = math.ceil(du_gpu.shape[1] / sz_block[1]), math.ceil(du_gpu.shape[0] / sz_block[0])
+        sz_grid = math.ceil(du_gpu.shape[1] / sz_block[0]), math.ceil(du_gpu.shape[0] / sz_block[1])
         # call the kernel
         pocfunc = self.module.get_function("upSampling")
         pocfunc(

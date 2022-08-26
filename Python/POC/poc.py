@@ -117,7 +117,7 @@ class phase_only_correlation():
             sz_block = 32, 32
         else:
             sz_block = 32, 16
-        sz_grid = math.ceil(img_gpu.shape[1] / sz_block[1]), math.ceil(img_gpu.shape[0] / sz_block[0])
+        sz_grid = math.ceil(img_gpu.shape[1] / sz_block[0]), math.ceil(img_gpu.shape[0] / sz_block[1])
         # call the kernel
         pocfunc = self.module.get_function("applyTransformation")
         pocfunc(
@@ -145,7 +145,7 @@ class phase_only_correlation():
         assert poc_gpu.flags.c_contiguous
 
         sz_block = 16, 16
-        sz_grid = math.ceil(img_ref_F.shape[1] / sz_block[1]), math.ceil(img_ref_F.shape[0] / sz_block[0])
+        sz_grid = math.ceil(img_ref_F.shape[1] / sz_block[0]), math.ceil(img_ref_F.shape[0] / sz_block[1])
         # call the kernel
         pocfunc = self.module.get_function("getPhaseOnlyCorrelation")
         pocfunc(
@@ -172,7 +172,7 @@ class phase_only_correlation():
         assert disparity_gpu.flags.c_contiguous
 
         sz_block = 32, 32
-        sz_grid = math.ceil(self.poc_gpu.shape[1] / sz_block[1]), math.ceil(self.poc_gpu.shape[0] / sz_block[0])
+        sz_grid = math.ceil(self.poc_gpu.shape[1] / sz_block[0]), math.ceil(self.poc_gpu.shape[0] / sz_block[1])
         # call the kernel
         pocfunc = self.module.get_function("getDisparity")
         pocfunc(

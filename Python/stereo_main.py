@@ -27,8 +27,9 @@ import cv2
 
 import add_path
 from colormap import disparity_to_colormap
-from jbf import joint_bilateral_filter as jbf
-from jbf import joint_bilateral_filter_parameters as jbf_param
+
+from stereo_demo import jbf_demo
+from stereo_demo import patch_match_demo
 
 if __name__ == '__main__':
     l = cv2.imread('../data/teddy/im2.png', cv2.IMREAD_GRAYSCALE)
@@ -40,24 +41,12 @@ if __name__ == '__main__':
     di = disparity_to_colormap(disparity_gt/16, 1, max_disparity_visualization)
     cv2.imwrite('disparity_gt.png', di)
 
-    stereo = cv2.StereoBM_create(numDisparities=numDisparities, blockSize=7)
-    disparity = stereo.compute(l, r)
-    di = disparity_to_colormap(disparity/16, 1, max_disparity_visualization)
-    cv2.imwrite('disparity_block_matching.png', di)
+    print('JBF Demo')
+    disparity_jbf = jbf_demo(l, r, max_disparity=numDisparities, max_disparity_visualization=numDisparities)
+    di = disparity_to_colormap(disparity_jbf/16, 1, max_disparity_visualization)
+    cv2.imwrite('disparity_jbf_refined.png', di)
 
-    cv2.filterSpeckles(disparity, -16, 32, 16)
-    di = disparity_to_colormap(disparity/16, 1, max_disparity_visualization)
-    cv2.imwrite('disparity_speckle.png', di)
-
-    mask = disparity < 0
-    p = jbf_param()
-    p.radius_h = 5
-    p.radius_v = 5
-    p.sigma_space = 3
-    p.range_min = 0
-    p.range_max = 255
-    p.sigma_range = 3
-    filter = jbf(p)
-    disparity = filter.apply(disparity, l)
-    di = disparity_to_colormap(disparity/16, 1, max_disparity_visualization)
-    cv2.imwrite('disparity_refined.png', di)
+    print('PatchMatch Demo')
+    disparity_pm = patch_match_demo(l, r, max_disparity=numDisparities)
+    di = disparity_to_colormap(disparity_pm, 1, max_disparity_visualization)
+    cv2.imwrite('disparity_pm.png', di)
