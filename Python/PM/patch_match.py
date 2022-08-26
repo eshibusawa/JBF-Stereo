@@ -36,10 +36,13 @@ class patch_match_stereo():
         self.patch_height = 11
         self.max_disparity = 128
         self.min_disparity = 0
+        self.disparity_range_penalty = 10
         self.weight_gamma = 10
         self.blending_alpha = 0.9
         self.truncate_color = 10
         self.truncate_grad = 2
+        self.spatial_delta = 5
+        self.enable_consistent_gradient_operator = True
         self.enable_half_pixel_shift = True
         self.enable_red_iteration = True
         self.gpu_module = None
@@ -69,11 +72,14 @@ class patch_match_stereo():
 
         cuda_source = cuda_source.replace('PM_MAX_DISPARITY', str(self.max_disparity))
         cuda_source = cuda_source.replace('PM_MIN_DISPARITY', str(self.min_disparity))
+        cuda_source = cuda_source.replace('PM_DISPARITY_RANGE_PENALTY', str(self.disparity_range_penalty))
 
         cuda_source = cuda_source.replace('PM_WEIGHT_GAMMA', str(self.weight_gamma))
         cuda_source = cuda_source.replace('PM_BLENDING_ALPHA', str(self.blending_alpha))
         cuda_source = cuda_source.replace('PM_TRUNCATE_COLOR', str(self.truncate_color))
         cuda_source = cuda_source.replace('PM_TRUNCATE_GRAD', str(self.truncate_grad))
+
+        cuda_source = cuda_source.replace('PM_SPATIAL_DELTA', str(self.spatial_delta))
 
         if self.enable_half_pixel_shift:
             options = '-DPM_ENABLE_HALF_PIXEL_SHIFT',
@@ -86,7 +92,12 @@ class patch_match_stereo():
         self.grad_ref = cp.empty((self.img_ref.shape[0], self.img_ref.shape[1], 2), dtype=cp.float32)
         self.grad_other = cp.empty((self.img_other.shape[0], self.img_other.shape[1], 2), dtype=cp.float32)
 
-        gpu_func = self.gpu_module.get_function('computeGradient')
+        gpu_func = None
+        if self.enable_consistent_gradient_operator:
+            gpu_func = self.gpu_module.get_function('computeConsistentGradient')
+        else:
+            gpu_func = self.gpu_module.get_function('computeSobelGradient')
+
         sz_block = 32, 32
         sz_grid = math.ceil(self.img_ref.shape[1] / sz_block[0]), math.ceil(self.img_ref.shape[0] / sz_block[1])
         gpu_func(
