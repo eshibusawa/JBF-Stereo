@@ -33,11 +33,16 @@ def create_texture_object(img_gpu,
     elif img_gpu.dtype == cp.int16:
         channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(16, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindSigned)
     elif img_gpu.dtype == cp.float32:
-        channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
+        if len(img_gpu) == 2:
+            channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
+        else:
+            assert len(img_gpu.shape) == 3
+            assert img_gpu.shape[2] == 2
+            channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(32, 32, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
     else:
         return None
     img_gpu_2d = cp.cuda.texture.CUDAarray(channel_format_descriptor, img_gpu.shape[1], img_gpu.shape[0])
-    img_gpu_2d.copy_from(img_gpu)
+    img_gpu_2d.copy_from(img_gpu.reshape(img_gpu.shape[0], -1))
 
     img_rd = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray,
         cuArr = img_gpu_2d)

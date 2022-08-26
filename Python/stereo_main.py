@@ -26,17 +26,9 @@ import numpy as np
 import cv2
 
 import add_path
-from colormap import colormap as jet
+from colormap import disparity_to_colormap
 from jbf import joint_bilateral_filter as jbf
 from jbf import joint_bilateral_filter_parameters as jbf_param
-
-def disparity_to_colormap(disparity, min_d, max_d):
-    mask = disparity > 0
-    delta = max_d - min_d
-    index = np.round(np.maximum(0, np.minimum(disparity - min_d, delta) / delta) * 255).astype(np.int32)
-    img = (jet[index] * 255).astype(np.uint8)
-    img[~mask] = (0,0,0)
-    return img
 
 if __name__ == '__main__':
     l = cv2.imread('../data/teddy/im2.png', cv2.IMREAD_GRAYSCALE)
