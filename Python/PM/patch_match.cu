@@ -101,7 +101,7 @@ extern "C" __global__ void computeConsistentGradient(
 	{
 		return;
 	}
-    const int index = indexX + indexY * width;
+	const int index = indexX + indexY * width;
 
 	// the consistent gradient operator [3]
 	float2 g;
@@ -135,7 +135,7 @@ extern "C" __global__ void computeSobelGradient(
 	{
 		return;
 	}
-    const int index = indexX + indexY * width;
+	const int index = indexX + indexY * width;
 	float2 g;
 	g.x = fmaf(2, getPixel<float>(tex, indexX + 1, indexY), 0);
 	g.x = fmaf(-2, getPixel<float>(tex, indexX - 1, indexY), g.x);
@@ -219,7 +219,7 @@ __device__ float getPatchCost(
 extern "C" __global__ void getInitialPlanesAndCosts(
 	float4 *planes,
 	float *costs,
-    unsigned long int *randomState,
+	unsigned long int *randomState,
 	cudaTextureObject_t texRef,
 	cudaTextureObject_t texOther,
 	cudaTextureObject_t texGradRef,
@@ -235,12 +235,12 @@ extern "C" __global__ void getInitialPlanesAndCosts(
 		return;
 	}
 
-    const int index = indexX + indexY * width;
-    unsigned long int rs = randomState[index];
+	const int index = indexX + indexY * width;
+	unsigned long int rs = randomState[index];
 	float4 p = getRandomPlane(g_minDisparity, g_maxDisparity, rs);
 	randomState[index] = rs;
 	planes[index] = p;
-    costs[index] = getPatchCost(make_float2(indexX, indexY), p, texRef, texOther, texGradRef, texGradOther);
+	costs[index] = getPatchCost(make_float2(indexX, indexY), p, texRef, texOther, texGradRef, texGradOther);
 }
 
 __device__ void computeSpatialPropagation(
@@ -266,7 +266,7 @@ __device__ void computeSpatialPropagation(
 		}
 
 		const int indexO = indexOX + indexOY * width;
-		const float updatedCost = getPatchCost(make_float2(indexOX, indexOY), planes[indexO], texRef, texOther, texGradRef, texGradOther);
+		const float updatedCost = getPatchCost(make_float2(indexX, indexY), planes[indexO], texRef, texOther, texGradRef, texGradOther);
 		if (updatedCost < costs[index])
 		{
 			costs[index] = updatedCost;
@@ -326,7 +326,7 @@ extern "C" __global__ void computeBlackSpatialPropagation(
 __device__ void computeRandomSearch(
 	float4 *planes,
 	float *costs,
-    unsigned long int *randomState,
+	unsigned long int *randomState,
 	int indexX,
 	int indexY,
 	cudaTextureObject_t texRef,
@@ -374,7 +374,7 @@ __device__ void computeRandomSearch(
 extern "C" __global__ void computeRedRandomSearch(
 	float4 *planes,
 	float *costs,
-    unsigned long int *randomState,
+	unsigned long int *randomState,
 	cudaTextureObject_t texRef,
 	cudaTextureObject_t texOther,
 	cudaTextureObject_t texGradRef,
@@ -399,7 +399,7 @@ extern "C" __global__ void computeRedRandomSearch(
 extern "C" __global__ void computeBlackRandomSearch(
 	float4 *planes,
 	float *costs,
-    unsigned long int *randomState,
+	unsigned long int *randomState,
 	cudaTextureObject_t texRef,
 	cudaTextureObject_t texOther,
 	cudaTextureObject_t texGradRef,
