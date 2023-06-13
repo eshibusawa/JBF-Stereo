@@ -22,12 +22,28 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
-import sys
-
-sys.path.append(os.path.join(os.path.dirname(__file__), 'IO'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'JBF'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'PM'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'ELAS'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'Texture'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'Util'))
+class elas_params:
+    def __init__(self):
+        self.disp_min              = 0
+        self.disp_max              = 255
+        self.support_threshold     = 0.95
+        self.support_texture       = 10
+        self.candidate_stepsize    = 5
+        self.incon_window_size     = 5
+        self.incon_threshold       = 5
+        self.incon_min_support     = 5
+        self.add_corners           = True
+        self.grid_size             = 20
+        self.beta                  = 0.02
+        self.gamma                 = 5
+        self.sigma                 = 1
+        self.sradius               = 3
+        self.match_texture         = 0
+        self.lr_threshold          = 2
+        self.speckle_sim_threshold = 1
+        self.speckle_size          = 200
+        self.ipol_gap_width        = 5000
+        self.filter_median         = True
+        self.filter_adaptive_mean  = False
+        self.postprocess_only_left = False
+        self.subsampling           = False

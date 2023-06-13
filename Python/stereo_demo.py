@@ -29,6 +29,8 @@ from colormap import disparity_to_colormap
 from jbf import joint_bilateral_filter as jbf
 from jbf import joint_bilateral_filter_parameters as jbf_param
 from patch_match import patch_match_stereo
+from elas import ELAS as elas
+from elas_params import elas_params as elas_param
 
 def jbf_demo(l, r, max_disparity, max_disparity_visualization):
     stereo = cv2.StereoBM_create(numDisparities=max_disparity, blockSize=7)
@@ -78,3 +80,10 @@ def patch_match_demo(l, r, max_disparity):
         pm.toggle_red_and_black()
 
     return pm.compute_disparity().get()
+
+def elas_demo(l, r):
+    p = elas_param()
+    e = elas(p)
+    e.process(l, r)
+
+    return e.get_disparity()

@@ -22,12 +22,14 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
-import sys
+import cupy as cp
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'IO'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'JBF'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'PM'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'ELAS'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'Texture'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'Util'))
+def upload_constant(module, arr, key, dtype=cp.float32):
+    arr_ptr = module.get_global(key)
+    arr_gpu = cp.ndarray(arr.shape, dtype, arr_ptr)
+    arr_gpu[:] = cp.array(arr, dtype=dtype)
+
+def download_constant(module, key, shape, dtype=cp.float32):
+    arr_ptr = module.get_global(key)
+    arr_gpu = cp.ndarray(shape, dtype, arr_ptr)
+    return arr_gpu.get()

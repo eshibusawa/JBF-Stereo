@@ -1,5 +1,5 @@
 # This file is part of JBF-Stereo.
-# Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+# Copyright (c) 2023, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,13 +27,14 @@ import cupy as cp
 def create_texture_object(img_gpu,
     addressMode = cp.cuda.runtime.cudaAddressModeBorder,
     filterMode = cp.cuda.runtime.cudaFilterModePoint,
-    readMode = cp.cuda.runtime.cudaReadModeElementType):
+    readMode = cp.cuda.runtime.cudaReadModeElementType,
+    normalizedCoords = 0):
     if img_gpu.dtype == cp.uint8:
         channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(8, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindUnsigned)
     elif img_gpu.dtype == cp.int16:
         channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(16, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindSigned)
     elif img_gpu.dtype == cp.float32:
-        if len(img_gpu) == 2:
+        if len(img_gpu.shape) == 2:
             channel_format_descriptor = cp.cuda.texture.ChannelFormatDescriptor(32, 0, 0, 0, cp.cuda.runtime.cudaChannelFormatKindFloat)
         else:
             assert len(img_gpu.shape) == 3
@@ -49,6 +50,6 @@ def create_texture_object(img_gpu,
     img_td = cp.cuda.texture.TextureDescriptor(addressModes = (addressMode, addressMode),
         filterMode=filterMode,
         readMode=readMode,
-        normalizedCoords = 0)
+        normalizedCoords = normalizedCoords)
     img_to = cp.cuda.texture.TextureObject(img_rd, img_td)
     return img_to

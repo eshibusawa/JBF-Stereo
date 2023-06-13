@@ -1,5 +1,5 @@
 # This file is part of JBF-Stereo.
-# Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+# Copyright (c) 2023, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,7 @@ from colormap import disparity_to_colormap
 
 from stereo_demo import jbf_demo
 from stereo_demo import patch_match_demo
+from stereo_demo import elas_demo
 
 if __name__ == '__main__':
     l = cv2.imread('../data/teddy/im2.png', cv2.IMREAD_GRAYSCALE)
@@ -50,3 +51,16 @@ if __name__ == '__main__':
     disparity_pm = patch_match_demo(l, r, max_disparity=numDisparities)
     di = disparity_to_colormap(disparity_pm, 1, max_disparity_visualization)
     cv2.imwrite('disparity_pm.png', di)
+
+    print('ELAS Demo')
+    l = cv2.imread('../data/conesH/im2.png', cv2.IMREAD_GRAYSCALE)
+    r = cv2.imread('../data/conesH/im6.png', cv2.IMREAD_GRAYSCALE)
+    disparity_gt_l = (cv2.imread('../data/conesH/disp2.png', cv2.IMREAD_GRAYSCALE).astype(np.int16) * 8)
+    di = disparity_to_colormap(disparity_gt_l/16, 1, 128)
+    cv2.imwrite('disparity_conesH_gt_l.png', di)
+
+    disparity_elas_l, disparity_elas_r = elas_demo(l, r)
+    di = disparity_to_colormap(disparity_elas_l, 1/16, 128)
+    cv2.imwrite('disparity_elas_l.png', di)
+    di = disparity_to_colormap(disparity_elas_r, 1/16, 128)
+    cv2.imwrite('disparity_elas_r.png', di)
