@@ -1,5 +1,5 @@
 # JBF-Stereo
-***JBF-Stereo*** is an implementation for disparity refinment by using joint bilateral filtering (JBF).
+***JBF-Stereo*** is an implementation for disparity refinement by using joint bilateral filtering (JBF).
 The refinement filter consists of joint bilateral filtering and joint nearest filtering, and both filters are CUDA-based GPU implementation.
 
 ## Result of disparity refinement by using Joint Bilateral Filter
@@ -8,10 +8,12 @@ The refinement filter consists of joint bilateral filtering and joint nearest fi
 ## Result of PatchMatch Stereo
 <img src="data/teddy/im2.png" width="237px"/><img src="imgs/disparity_pm.png" width="237px"/>
 
+see more detail for [PatchMatch](./Python/PM/README.md).
+
 ## Result of ELAS (Efficient Large-Scale Stereo Matching)
 <img src="data/conesH/im2.png" width="237px"/><img src="imgs/disparity_elas_l.png" width="237px"/><img src="data/conesH/im6.png" width="237px"/><img src="imgs/disparity_elas_r.png" width="237px"/>
 
-[see more detail](./Python/ELAS/README.md).
+see more detail for [ELAS](./Python/ELAS/README.md).
 
 ## Requirements
 ***JBF-Stereo*** requires the following libraries:

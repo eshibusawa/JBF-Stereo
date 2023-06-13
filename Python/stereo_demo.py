@@ -84,6 +84,7 @@ def patch_match_demo(l, r, max_disparity):
 def elas_demo(l, r):
     p = elas_param()
     e = elas(p)
+    e.setup_module()
     e.process(l, r)
 
     return e.get_disparity()
