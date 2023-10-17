@@ -1,5 +1,5 @@
 # This file is part of JBF-Stereo.
-# Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+# Copyright (c) 2023, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -54,6 +54,7 @@ class patch_match_stereo():
         dn = os.path.dirname(__file__)
         fnl = list()
         fnl.append(os.path.join(dn, 'rand_mls.cuh'))
+        fnl.append(os.path.join(dn, 'gradient.cu'))
         fnl.append(os.path.join(dn, 'patch_match.cu'))
 
         cuda_source = None
@@ -64,6 +65,10 @@ class patch_match_stereo():
                 cuda_source = cs
             else:
                 cuda_source += cs
+
+        cuda_source = cuda_source.replace('GRADIENT_PIXEL_SAMPLER', 'PM_PIXEL_SAMPLER')
+        cuda_source = cuda_source.replace('GRADIENT_PIXEL_TYPE', 'float')
+        cuda_source = cuda_source.replace('GRADIENT_SAMPLER_FUNCTION', 'get<float, 255>')
 
         cuda_source = cuda_source.replace('PM_PATCH_WIDTH', str(self.patch_width))
         cuda_source = cuda_source.replace('PM_PATCH_HEIGHT', str(self.patch_height))
@@ -82,10 +87,11 @@ class patch_match_stereo():
         cuda_source = cuda_source.replace('PM_SPATIAL_DELTA', str(self.spatial_delta))
 
         if self.enable_half_pixel_shift:
-            options = '-DPM_ENABLE_HALF_PIXEL_SHIFT',
-            self.gpu_module = cp.RawModule(code=cuda_source, options=options)
+            cuda_source = cuda_source.replace('PM_PIXEL_SAMPLER', 'ShiftSampler')
         else:
-            self.gpu_module = cp.RawModule(code=cuda_source)
+            cuda_source = cuda_source.replace('PM_PIXEL_SAMPLER', 'NormalSampler')
+
+        self.gpu_module = cp.RawModule(code=cuda_source)
         self.gpu_module.compile()
 
     def compute_gradient(self):

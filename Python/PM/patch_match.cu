@@ -1,5 +1,5 @@
 // This file is part of JBF-Stereo.
-// Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+// Copyright (c) 2023, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -27,8 +27,6 @@
 //     Patchmatch stereo-stereo matching with slanted support windows. In Bmvc (Vol. 11, pp. 1-11).
 // [2] Galliani, S., Lasinger, K., & Schindler, K. (2015).
 //     Massively parallel multiview stereopsis by surface normal diffusion. In ICCV (pp. 873-881).
-// [3] Ando, S. (2000).
-// Consistent gradient operators. IEEE Transactions on Pattern Analysis and Machine Intelligence, 22(3), 252-265.
 
 __constant__ int g_patchWidth(PM_PATCH_WIDTH);
 __constant__ int g_patchHeight(PM_PATCH_HEIGHT);
@@ -47,27 +45,6 @@ __constant__ float g_truncateGrad(PM_TRUNCATE_GRAD); // tau_grad of Eq. (5) in [
 __constant__ int g_propagationOffsetNum(8);
 __constant__ int g_propagationOffsetX[] = { 0,  0, -1, -(PM_SPATIAL_DELTA), 0, 0, 1, (PM_SPATIAL_DELTA)}; // Fig. 2 (c) in [2]
 __constant__ int g_propagationOffsetY[] = {-1, -(PM_SPATIAL_DELTA),  0,  0, 1, (PM_SPATIAL_DELTA), 0, 0}; // Fig. 2 (c) in [2]
-
-template<typename T>
-inline __device__ T getPixel(cudaTextureObject_t tex, float x, float y)
-{
-#if PM_ENABLE_HALF_PIXEL_SHIFT
-	return static_cast<T>(255.f * tex2D<float>(tex, x + 0.5f, y + 0.5f));
-#else
-	return static_cast<T>(255.f * tex2D<float>(tex, x, y));
-#endif
-}
-
-inline __device__ float2 getPixel2(cudaTextureObject_t tex, float x, float y)
-{
-	float2 ret;
-#if PM_ENABLE_HALF_PIXEL_SHIFT
-	ret = tex2D<float2>(tex, x + 0.5f, y + 0.5f);
-#else
-	ret = tex2D<float2>(tex, x, y);
-#endif
-	return ret;
-}
 
 inline __device__ float4 getRandomPlane(float minDisparity, float maxDisparity, unsigned long int &rs)
 {
@@ -89,71 +66,6 @@ inline __device__ float computePixelWeight(float pixelRef, float pixelOther)
 	return expf(-fabsf(pixelRef - pixelOther) / g_weightGamma);
 }
 
-extern "C" __global__ void computeConsistentGradient(
-	float2 *gradient,
-	cudaTextureObject_t tex,
-	int height,
-	int width)
-{
-	const int indexX = blockIdx.x * blockDim.x + threadIdx.x;
-	const int indexY = blockIdx.y * blockDim.y + threadIdx.y;
-	if ((indexX >= width) || (indexY >= height))
-	{
-		return;
-	}
-	const int index = indexX + indexY * width;
-
-	// the consistent gradient operator [3]
-	float2 g;
-	const float c0 = 0.274526f, c1 = 0.112737f;
-	g.x = fmaf(c0, getPixel<float>(tex, indexX + 1, indexY), 0);
-	g.x = fmaf(-c0, getPixel<float>(tex, indexX - 1, indexY), g.x);
-	g.x = fmaf(c1, getPixel<float>(tex, indexX + 1, indexY - 1), g.x);
-	g.x = fmaf(-c1, getPixel<float>(tex, indexX - 1, indexY - 1), g.x);
-	g.x = fmaf(c1, getPixel<float>(tex, indexX + 1, indexY + 1), g.x);
-	g.x = fmaf(-c1, getPixel<float>(tex, indexX - 1, indexY + 1), g.x);
-
-	g.y = fmaf(c0, getPixel<float>(tex, indexX, indexY + 1), 0);
-	g.y = fmaf(-c0, getPixel<float>(tex, indexX, indexY - 1), g.y);
-	g.y = fmaf(c1, getPixel<float>(tex, indexX - 1, indexY + 1), g.y);
-	g.y = fmaf(-c1, getPixel<float>(tex, indexX - 1, indexY - 1), g.y);
-	g.y = fmaf(c1, getPixel<float>(tex, indexX + 1, indexY + 1), g.y);
-	g.y = fmaf(-c1, getPixel<float>(tex, indexX + 1, indexY - 1), g.y);
-
-	gradient[index] = g;
-}
-
-extern "C" __global__ void computeSobelGradient(
-	float2 *gradient,
-	cudaTextureObject_t tex,
-	int height,
-	int width)
-{
-	const int indexX = blockIdx.x * blockDim.x + threadIdx.x;
-	const int indexY = blockIdx.y * blockDim.y + threadIdx.y;
-	if ((indexX >= width) || (indexY >= height))
-	{
-		return;
-	}
-	const int index = indexX + indexY * width;
-	float2 g;
-	g.x = fmaf(2, getPixel<float>(tex, indexX + 1, indexY), 0);
-	g.x = fmaf(-2, getPixel<float>(tex, indexX - 1, indexY), g.x);
-	g.x += getPixel<float>(tex, indexX + 1, indexY - 1);
-	g.x -= getPixel<float>(tex, indexX - 1, indexY - 1);
-	g.x += getPixel<float>(tex, indexX + 1, indexY + 1);
-	g.x -= getPixel<float>(tex, indexX - 1, indexY + 1);
-
-	g.y = fmaf(2, getPixel<float>(tex, indexX, indexY + 1), 0);
-	g.y = fmaf(-2, getPixel<float>(tex, indexX, indexY - 1), g.y);
-	g.y += getPixel<float>(tex, indexX - 1, indexY + 1);
-	g.y -= getPixel<float>(tex, indexX - 1, indexY - 1);
-	g.y += getPixel<float>(tex, indexX + 1, indexY + 1);
-	g.y -= getPixel<float>(tex, indexX + 1, indexY - 1);
-
-	gradient[index] = g;
-}
-
 __device__ float computePixelCost(
 	float2 pointRef,
 	float2 pointOther,
@@ -164,10 +76,10 @@ __device__ float computePixelCost(
 {
 	// Eq. (5)
 	// color
-	const float colorCost = fmin(fabsf(getPixel<float>(texRef, pointRef.x, pointRef.y) - getPixel<float>(texOther, pointOther.x, pointOther.y)), g_truncateColor);
+	const float colorCost = fmin(fabsf(PM_PIXEL_SAMPLER<float>::get<255>(texRef, pointRef.x, pointRef.y) - PM_PIXEL_SAMPLER<float>::get<255>(texOther, pointOther.x, pointOther.y)), g_truncateColor);
 
-	float2 gradRef = getPixel2(texGradRef, pointRef.x, pointRef.y);
-	float2 gradOther = getPixel2(texGradOther, pointOther.x, pointOther.y);
+	float2 gradRef = PM_PIXEL_SAMPLER<float2>::get(texGradRef, pointRef.x, pointRef.y);
+	float2 gradOther = PM_PIXEL_SAMPLER<float2>::get(texGradOther, pointOther.x, pointOther.y);
 
 	const float gradCost = fmin(fabsf(gradRef.x - gradOther.x) + fabsf(gradRef.y - gradOther.y), g_truncateGrad);
 
@@ -202,8 +114,8 @@ __device__ float getPatchCost(
 			pointOther.y = pointRef.y + j;
 
 			// Eq. (4)
-			const float weight = computePixelWeight(getPixel<float>(texRef, pointRef.x, pointRef.y),
-				getPixel<float>(texRef, pointRef.x + i, pointRef.y + j));
+			const float weight = computePixelWeight(PM_PIXEL_SAMPLER<float>::get<255>(texRef, pointRef.x, pointRef.y),
+				PM_PIXEL_SAMPLER<float>::get<255>(texRef, pointRef.x + i, pointRef.y + j));
 
 			const float cost = computePixelCost(
 				make_float2(pointRef.x + i, pointRef.y + j),

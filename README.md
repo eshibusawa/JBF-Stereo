@@ -6,7 +6,7 @@ The refinement filter consists of joint bilateral filtering and joint nearest fi
 <img src="data/teddy/im2.png" width="237px"/><img src="imgs/disparity_block_matching.png" width="237px"/><img src="imgs/disparity_refined.png" width="237px"/><img src="imgs/disparity_gt.png" width="237px"/>
 
 ## Result of PatchMatch Stereo
-<img src="data/teddy/im2.png" width="237px"/><img src="imgs/disparity_pm.png" width="237px"/>
+<img src="data/teddy/im2.png" width="237px"/><img src="imgs/disparity_pm.png" width="237px"/><img src="imgs/disparity_pm.webp" width="237px"/>
 
 see more detail for [PatchMatch](./Python/PM/README.md).
 

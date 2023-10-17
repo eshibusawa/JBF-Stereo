@@ -96,7 +96,7 @@ class joint_bilateral_filter():
         img_to = create_texture_object(img_gpu)
         guide_img_to = create_texture_object(guide_img_gpu)
 
-        sz_block = 32, 32
+        sz_block = 32, 16
         sz_grid = math.ceil(img_filtered_gpu.shape[1] / sz_block[0]), math.ceil(img_filtered_gpu.shape[0] / sz_block[1])
         # call the kernel
         self.jbf(
