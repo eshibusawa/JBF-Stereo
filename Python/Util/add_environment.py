@@ -23,12 +23,6 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
-import sys
-
-sys.path.append(os.path.join(os.path.dirname(__file__), 'IO'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'JBF'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'PM'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'ELAS'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'TGV'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'Texture'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'Util'))
+if os.environ.get('NVCC') is None:
+    os.environ['NVCC'] = '/usr/local/cuda/bin/nvcc'
+import cupy as cp

@@ -15,6 +15,11 @@ see more detail for [PatchMatch](./Python/PM/README.md).
 
 see more detail for [ELAS](./Python/ELAS/README.md).
 
+## Result of TGV (Total Generalized Variation)
+<img src="data/teddy/im2.png" width="237px"/><img src="imgs/disparity_tgv.png" width="237px"/><img src="imgs/disparity_tgv.webp" width="237px"/>
+
+see more detail for [TGV](./Python/TGV/README.md).
+
 ## Requirements
 ***JBF-Stereo*** requires the following libraries:
 + cupy
@@ -29,3 +34,9 @@ pip install -r requirement.txt
 ```sh
 # compute disparity using block matching and apply JBF, PM, ELAS
 python Python/stereo_main.py
+```
+```sh
+# compute disparity using TGV
+# this demo requires CUDAToolkit and executable nvcc
+python Python/stereo_main_nvcc.py
+```

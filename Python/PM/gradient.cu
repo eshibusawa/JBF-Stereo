@@ -81,6 +81,46 @@ struct NormalSampler
 	}
 };
 
+__device__ inline float2 computeConsistentGradient_(cudaTextureObject_t input, float x, float y)
+{
+	float2 g;
+	// the consistent gradient operator [1]
+	const float c0 = 0.274526f, c1 = 0.112737f;
+	g.x = fmaf(c0, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y), 0);
+	g.x = fmaf(-c0, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y), g.x);
+	g.x = fmaf(c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y - 1), g.x);
+	g.x = fmaf(-c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y - 1), g.x);
+	g.x = fmaf(c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y + 1), g.x);
+	g.x = fmaf(-c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y + 1), g.x);
+
+	g.y = fmaf(c0, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x, y + 1), 0);
+	g.y = fmaf(-c0, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x, y - 1), g.y);
+	g.y = fmaf(c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y + 1), g.y);
+	g.y = fmaf(-c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y - 1), g.y);
+	g.y = fmaf(c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y + 1), g.y);
+	g.y = fmaf(-c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y - 1), g.y);
+	return g;
+}
+
+__device__ inline float2 computeSobelGradient_(cudaTextureObject_t input, float x, float y)
+{
+	float2 g;
+	g.x = fmaf(2, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y), 0);
+	g.x = fmaf(-2, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y), g.x);
+	g.x += GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y - 1);
+	g.x -= GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y - 1);
+	g.x += GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y + 1);
+	g.x -= GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y + 1);
+
+	g.y = fmaf(2, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x, y + 1), 0);
+	g.y = fmaf(-2, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x, y - 1), g.y);
+	g.y += GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y + 1);
+	g.y -= GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x - 1, y - 1);
+	g.y += GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y + 1);
+	g.y -= GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(input, x + 1, y - 1);
+	return g;
+}
+
 extern "C" __global__ void computeConsistentGradient(
 	float2 *gradient,
 	cudaTextureObject_t tex,
@@ -94,25 +134,7 @@ extern "C" __global__ void computeConsistentGradient(
 		return;
 	}
 	const int index = indexX + indexY * width;
-
-	// the consistent gradient operator [1]
-	float2 g;
-	const float c0 = 0.274526f, c1 = 0.112737f;
-	g.x = fmaf(c0, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY), 0);
-	g.x = fmaf(-c0, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY), g.x);
-	g.x = fmaf(c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY - 1), g.x);
-	g.x = fmaf(-c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY - 1), g.x);
-	g.x = fmaf(c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY + 1), g.x);
-	g.x = fmaf(-c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY + 1), g.x);
-
-	g.y = fmaf(c0, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX, indexY + 1), 0);
-	g.y = fmaf(-c0, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX, indexY - 1), g.y);
-	g.y = fmaf(c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY + 1), g.y);
-	g.y = fmaf(-c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY - 1), g.y);
-	g.y = fmaf(c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY + 1), g.y);
-	g.y = fmaf(-c1, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY - 1), g.y);
-
-	gradient[index] = g;
+	gradient[index] = computeConsistentGradient_(tex, indexX, indexY);
 }
 
 extern "C" __global__ void computeSobelGradient(
@@ -128,20 +150,5 @@ extern "C" __global__ void computeSobelGradient(
 		return;
 	}
 	const int index = indexX + indexY * width;
-	float2 g;
-	g.x = fmaf(2, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY), 0);
-	g.x = fmaf(-2, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY), g.x);
-	g.x += GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY - 1);
-	g.x -= GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY - 1);
-	g.x += GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY + 1);
-	g.x -= GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY + 1);
-
-	g.y = fmaf(2, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX, indexY + 1), 0);
-	g.y = fmaf(-2, GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX, indexY - 1), g.y);
-	g.y += GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY + 1);
-	g.y -= GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX - 1, indexY - 1);
-	g.y += GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY + 1);
-	g.y -= GRADIENT_PIXEL_SAMPLER<GRADIENT_PIXEL_TYPE>::GRADIENT_SAMPLER_FUNCTION(tex, indexX + 1, indexY - 1);
-
-	gradient[index] = g;
+	gradient[index] = computeSobelGradient_(tex, indexX, indexY);
 }
