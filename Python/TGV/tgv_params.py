@@ -37,8 +37,8 @@ class tgv_params:
         self.max_disparity = 64
         self.census_radius = 3
         self.aggregation_radius = 7
-        self.aggregation_gamma_c = 14
-        self.aggregation_gamma_p = 8
+        self.aggregation_gamma_c = 20
+        self.aggregation_gamma_p = 10
         self.aggregation_k = 5
         # settings of [1]
         self.max_iteration = 80

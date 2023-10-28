@@ -91,10 +91,8 @@ class TGV:
         cuda_source = cuda_source.replace('TGV_TAU_V', str(self.params.tau_v))
         cuda_source = cuda_source.replace('TGV_TAU_P', str(self.params.tau_p))
         cuda_source = cuda_source.replace('TGV_TAU_Q', str(self.params.tau_q))
-        cuda_source = cuda_source.replace('TGV_LAMBDA_D', str(self.params.lambda_d))
         cuda_source = cuda_source.replace('TGV_LAMBDA_S', str(self.params.lambda_s))
         cuda_source = cuda_source.replace('TGV_LAMBDA_A', str(self.params.lambda_a))
-        cuda_source = cuda_source.replace('TGV_BETA', str(self.params.beta))
 
         self.gpu_module = cp.RawModule(code=cuda_source)
         self.gpu_module.compile()
@@ -383,7 +381,7 @@ class TGV:
             self.var_theta *= (1 - self.params.beta * n)
 
         # compute disparity
-        self.d_TGV = self.var_a.reshape(self.img_ref.shape) * cp.float32(self.params.max_disparity)
+        self.d_TGV = self.var_u.reshape(self.img_ref.shape) * cp.float32(self.params.max_disparity)
 
     def get_disparity(self, method):
         if method == 'LASW':
