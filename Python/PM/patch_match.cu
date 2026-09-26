@@ -46,17 +46,17 @@ __constant__ int g_propagationOffsetNum(8);
 __constant__ int g_propagationOffsetX[] = { 0,  0, -1, -(PM_SPATIAL_DELTA), 0, 0, 1, (PM_SPATIAL_DELTA)}; // Fig. 2 (c) in [2]
 __constant__ int g_propagationOffsetY[] = {-1, -(PM_SPATIAL_DELTA),  0,  0, 1, (PM_SPATIAL_DELTA), 0, 0}; // Fig. 2 (c) in [2]
 
-inline __device__ float4 getRandomPlane(float minDisparity, float maxDisparity, unsigned long int &rs)
+inline __device__ float4 getRandomPlane(float minDisparity, float maxDisparity, RandomState &rs)
 {
+	// the normal is uniformly distributed on the unit sphere (the plane does not depend on the sign of the normal)
 	float4 p;
+	const float z = 1.f - 2.f * unif(rs);
+	const float r = sqrtf(fmaxf(0.f, 1.f - z * z));
 	float s, c;
-	sincosf(lsfr(rs), &s, &c);
-	p.x = s;
-	p.y = s;
-	p.z = c;
-	sincosf(lsfr(rs), &s, &c);
-	p.x *= c;
-	p.y *= s;
+	sincosf(PM_2PI * unif(rs), &s, &c);
+	p.x = r * c;
+	p.y = r * s;
+	p.z = z;
 	p.w = unifBetween(minDisparity, maxDisparity, rs);
 	return p;
 }
@@ -131,7 +131,8 @@ __device__ float getPatchCost(
 extern "C" __global__ void getInitialPlanesAndCosts(
 	float4 *planes,
 	float *costs,
-	unsigned long int *randomState,
+	unsigned long long randomSeed,
+	unsigned long long randomOffset,
 	cudaTextureObject_t texRef,
 	cudaTextureObject_t texOther,
 	cudaTextureObject_t texGradRef,
@@ -148,9 +149,9 @@ extern "C" __global__ void getInitialPlanesAndCosts(
 	}
 
 	const int index = indexX + indexY * width;
-	unsigned long int rs = randomState[index];
+	RandomState rs;
+	initRandom(rs, randomSeed, index, randomOffset);
 	float4 p = getRandomPlane(g_minDisparity, g_maxDisparity, rs);
-	randomState[index] = rs;
 	planes[index] = p;
 	costs[index] = getPatchCost(make_float2(indexX, indexY), p, texRef, texOther, texGradRef, texGradOther);
 }
@@ -238,7 +239,8 @@ extern "C" __global__ void computeBlackSpatialPropagation(
 __device__ void computeRandomSearch(
 	float4 *planes,
 	float *costs,
-	unsigned long int *randomState,
+	unsigned long long randomSeed,
+	unsigned long long randomOffset,
 	int indexX,
 	int indexY,
 	cudaTextureObject_t texRef,
@@ -251,7 +253,8 @@ __device__ void computeRandomSearch(
 	// p. 6, Plane Refinement of [1]
 	const int index = indexX + indexY * width;
 	const float2 p = make_float2(indexX, indexY);
-	unsigned long int rs = randomState[index];
+	RandomState rs;
+	initRandom(rs, randomSeed, index, randomOffset);
 
 	float maxDeltaz0 = g_maxDisparity * 0.5f;
 	float maxDeltan = 1.f;
@@ -279,14 +282,13 @@ __device__ void computeRandomSearch(
 		maxDeltaz0 *= .5f;
 		maxDeltan *= .5f;
 	}
-
-	randomState[index] = rs;
 }
 
 extern "C" __global__ void computeRedRandomSearch(
 	float4 *planes,
 	float *costs,
-	unsigned long int *randomState,
+	unsigned long long randomSeed,
+	unsigned long long randomOffset,
 	cudaTextureObject_t texRef,
 	cudaTextureObject_t texOther,
 	cudaTextureObject_t texGradRef,
@@ -305,13 +307,14 @@ extern "C" __global__ void computeRedRandomSearch(
 	{
 		return;
 	}
-	computeRandomSearch(planes, costs, randomState, indexX, indexY, texRef, texOther, texGradRef, texGradOther, height, width);
+	computeRandomSearch(planes, costs, randomSeed, randomOffset, indexX, indexY, texRef, texOther, texGradRef, texGradOther, height, width);
 }
 
 extern "C" __global__ void computeBlackRandomSearch(
 	float4 *planes,
 	float *costs,
-	unsigned long int *randomState,
+	unsigned long long randomSeed,
+	unsigned long long randomOffset,
 	cudaTextureObject_t texRef,
 	cudaTextureObject_t texOther,
 	cudaTextureObject_t texGradRef,
@@ -330,7 +333,7 @@ extern "C" __global__ void computeBlackRandomSearch(
 	{
 		return;
 	}
-	computeRandomSearch(planes, costs, randomState, indexX, indexY, texRef, texOther, texGradRef, texGradOther, height, width);
+	computeRandomSearch(planes, costs, randomSeed, randomOffset, indexX, indexY, texRef, texOther, texGradRef, texGradOther, height, width);
 }
 
 extern "C" __global__ void computeDisparity(

@@ -152,8 +152,8 @@ class ELAS():
 
     def compute_descriptor(self):
         self.compute_gradient()
-        self.descriptor_ref = cp.empty((self.img_ref.shape[0], self.img_ref.shape[1], self.descriptor_length), dtype=cp.uint8)
-        self.descriptor_other = cp.empty((self.img_other.shape[0], self.img_other.shape[1], self.descriptor_length), dtype=cp.uint8)
+        self.descriptor_ref = cp.zeros((self.img_ref.shape[0], self.img_ref.shape[1], self.descriptor_length), dtype=cp.uint8)
+        self.descriptor_other = cp.zeros((self.img_other.shape[0], self.img_other.shape[1], self.descriptor_length), dtype=cp.uint8)
 
         assert self.descriptor_ref.flags.c_contiguous
         assert self.descriptor_other.flags.c_contiguous
@@ -295,7 +295,7 @@ class ELAS():
 
         if self.param.add_corners:
             h, w = self.img_ref.shape[0], self.img_ref.shape[1]
-            work = cp.full((4,), -256, dtype=cp.uint64)
+            work = cp.full((4,), 2**64 - 256, dtype=cp.uint64) # -256 as uint64 (NumPy 2 rejects negative values)
             support_candidate[:4,:] = cp.array([[0, 0, -1], [0, h - 1, -1], [w - 1, 0, -1], [w - 1, h - 1, -1]], dtype=cp.int32)
             gpu_func = self.gpu_module.get_function('addCornerToSupport')
             sz_block = 1024, 1
@@ -320,6 +320,10 @@ class ELAS():
             if self.support_matches.shape[1] != 3:
                 self.compute_support_matches()
         support_matches = self.support_matches.get()
+        # the order of the support points depends on the GPU thread scheduling, and the triangulation of
+        # co-circular points depends on the order, so sort them (the triangulation indices refer to this order)
+        support_matches = support_matches[np.lexsort((support_matches[:,0], support_matches[:,1]))]
+        self.support_matches = cp.asarray(support_matches)
         self.triangulation_ref = Delaunay(support_matches[:,:2]).simplices
         support_matches[:,0] -= support_matches[:,2]
         self.triangulation_other = Delaunay(support_matches[:,:2]).simplices

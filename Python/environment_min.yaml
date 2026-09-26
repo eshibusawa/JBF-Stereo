@@ -4,6 +4,7 @@ channels:
 dependencies:
   - cuda-version=12.9
   - cupy
+  - libcurand-dev
   - ipython
   - py-opencv
   - pybind11

@@ -285,7 +285,7 @@ extern "C" __global__ void computeDescriptor(
 	const int indexY = blockIdx.y * blockDim.y + threadIdx.y;
 	const int indexXp = indexX + (ELAS_DESCRIPTOR_PADDING); // padded
 	const int indexYp = indexY + (ELAS_DESCRIPTOR_PADDING); // padded
-	if ((indexXp >= width) || (indexYp >= height))
+	if ((indexXp >= width - (ELAS_DESCRIPTOR_PADDING)) || (indexYp >= height - (ELAS_DESCRIPTOR_PADDING)))
 	{
 		return;
 	}
@@ -929,6 +929,10 @@ __device__ inline void findMatch_(
 {
 	const unsigned char *dRef, *dOther;
 	Side::descriptor(descriptor1, descriptor2, &dRef, &dOther);
+	if ((uv.x < 2) || (uv.x >= width - 2))
+	{
+		return;
+	}
 	const int sumT = computeDescriptorSum(dRef);
 	if (sumT < (ELAS_MATCH_TEXTURE))
 	{

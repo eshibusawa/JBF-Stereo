@@ -1,5 +1,5 @@
 // This file is part of JBF-Stereo.
-// Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+// Copyright (c) 2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -22,29 +22,26 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// It is desiable to use cuRAND, however this implementation uses random generator based on maximum legth sequence
-// https://github.com/cupy/cupy/issues/1431
-inline __device__ unsigned long int lsfr(unsigned long int &randomState)
+// Random number generator of PatchMatch based on cuRAND (Philox). It replaces the LFSR of rand_mls.cuh, whose
+// consecutive outputs share 31 bits (see README.md).
+// The state is not kept in memory: every kernel launch initializes it from (seed, pixel index, offset), where the
+// offset is advanced by the host at each launch that consumes random numbers.
+#include <curand_kernel.h>
+
+typedef curandStatePhilox4_32_10_t RandomState;
+
+inline __device__ void initRandom(RandomState &randomState, unsigned long long seed, int index, unsigned long long offset)
 {
-	const unsigned long int mask = ((1UL << 6) | (1UL << 4) | (1UL << 2) | (1UL << 1) | (1UL << 0));
-	if (randomState & (1UL << 31))
-	{
-		randomState = ((randomState ^ mask) << 1) | 1UL;
-	}
-	else
-	{
-		randomState <<= 1;
-	}
-	return randomState;
+	curand_init(seed, index, offset, &randomState);
 }
 
-inline __device__ float unif(unsigned long int &randomState)
+// uniform in (0, 1]
+inline __device__ float unif(RandomState &randomState)
 {
-	return (lsfr(randomState) & 0xffffffffUL) / static_cast<float>(0xffffffffUL + 1.f);
+	return curand_uniform(&randomState);
 }
 
-inline __device__ float unifBetween(float minValue, float maxValue, unsigned long int &randomState)
+inline __device__ float unifBetween(float minValue, float maxValue, RandomState &randomState)
 {
-	float s = maxValue - minValue;
-	return unif(randomState) * s + minValue;
+	return unif(randomState) * (maxValue - minValue) + minValue;
 }

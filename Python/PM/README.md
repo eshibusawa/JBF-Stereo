@@ -1,8 +1,7 @@
 # PM-GPU
 ***PM-GPU*** is a GPU implementation for the PatchMatch stereo algorithm [1].
 By modifying checkerboard diffusion [2] for rectified stereo scenario the spatial propagation as well as the perturbation are fully parallelized on GPU.
-For random sampling in GPU kernel the author implemented light-weight LFSR (linear feedback shift register) pseudo random generator.
-The author was concerned that it is too simple, however, resulting disparity seemed reasonable.
+For random sampling in GPU kernel the author implemented simple random generator uing cuRAND ([rand_curand.cuh](rand_curand.cuh)).
 The implementation provides an additional experimental option consistent gradient operator [3].
 However the author did not evaluate the effectiveness of it quantitatively.
 

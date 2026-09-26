@@ -25,12 +25,16 @@
 import math
 import os
 
+import numpy as np
 import cupy as cp
 
 import add_path
 import texture
 
 class patch_match_stereo():
+    # random numbers reserved for every kernel launch (a launch uses 4 per halving step of the random search, ~40 for max_disparity = 128)
+    RANDOM_OFFSET_STRIDE = 1024
+
     def __init__(self):
         self.patch_width = 11
         self.patch_height = 11
@@ -45,6 +49,8 @@ class patch_match_stereo():
         self.enable_consistent_gradient_operator = True
         self.enable_half_pixel_shift = True
         self.enable_red_iteration = True
+        # seed of the random number generator (cuRAND); None: a new seed is drawn at every initialize_planes
+        self.random_seed = None
         self.gpu_module = None
 
     def compile_module(self):
@@ -53,7 +59,7 @@ class patch_match_stereo():
 
         dn = os.path.dirname(__file__)
         fnl = list()
-        fnl.append(os.path.join(dn, 'rand_mls.cuh'))
+        fnl.append(os.path.join(dn, 'rand_curand.cuh'))
         fnl.append(os.path.join(dn, 'gradient.cu'))
         fnl.append(os.path.join(dn, 'patch_match.cu'))
 
@@ -85,6 +91,8 @@ class patch_match_stereo():
         cuda_source = cuda_source.replace('PM_TRUNCATE_GRAD', str(self.truncate_grad))
 
         cuda_source = cuda_source.replace('PM_SPATIAL_DELTA', str(self.spatial_delta))
+
+        cuda_source = cuda_source.replace('PM_2PI', str(2 * np.pi) + 'f')  # 'f': float literal (a double literal makes the product double)
 
         if self.enable_half_pixel_shift:
             cuda_source = cuda_source.replace('PM_PIXEL_SAMPLER', 'ShiftSampler')
@@ -159,12 +167,14 @@ class patch_match_stereo():
         # compute gradient
         self.compute_gradient()
 
-        # initialize planes, cost, random state
-        self.random_state = cp.random.randint(0, 2 ** 63, (self.img_ref.shape[0], self.img_ref.shape[1]), dtype=cp.uint64)
+        # initialize planes, cost, random number generator
+        self.random_seed_used = self.random_seed
+        if self.random_seed_used is None:
+            self.random_seed_used = int(np.random.default_rng().integers(0, 2 ** 63))
+        self.random_offset = 0
         self.planes = cp.empty((self.img_ref.shape[0], self.img_ref.shape[1], 4), dtype=cp.float32)
         self.cost = cp.empty((self.img_ref.shape[0], self.img_ref.shape[1]), dtype=cp.float32)
 
-        assert self.random_state.flags.c_contiguous
         assert self.planes.flags.c_contiguous
         assert self.cost.flags.c_contiguous
 
@@ -177,7 +187,8 @@ class patch_match_stereo():
             args=(
                 self.planes,
                 self.cost,
-                self.random_state,
+                np.uint64(self.random_seed_used),
+                np.uint64(self.random_offset),
                 self.to_ref,
                 self.to_other,
                 self.to_grad_ref,
@@ -187,6 +198,7 @@ class patch_match_stereo():
             )
         )
         cp.cuda.runtime.deviceSynchronize()
+        self.random_offset += self.RANDOM_OFFSET_STRIDE
 
     def toggle_red_and_black(self):
         self.enable_red_iteration = not self.enable_red_iteration
@@ -231,7 +243,8 @@ class patch_match_stereo():
             args=(
                 self.planes,
                 self.cost,
-                self.random_state,
+                np.uint64(self.random_seed_used),
+                np.uint64(self.random_offset),
                 self.to_ref,
                 self.to_other,
                 self.to_grad_ref,
@@ -241,6 +254,7 @@ class patch_match_stereo():
             )
         )
         cp.cuda.runtime.deviceSynchronize()
+        self.random_offset += self.RANDOM_OFFSET_STRIDE
 
     def compute_disparity(self):
         disparity_gpu = cp.empty((self.img_ref.shape[0], self.img_ref.shape[1]), dtype=cp.float32)
