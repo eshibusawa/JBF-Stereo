@@ -22,8 +22,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from unittest import TestCase
-from nose.tools import ok_
 import numpy as np
 import cupy as cp
 import scipy.signal
@@ -34,22 +32,22 @@ from poc import create_Hann_window
 from poc import phase_only_correlation_parameters
 from poc import phase_only_correlation
 
-class POCTestCase(TestCase):
-    def setUp(self):
+class TestPOC:
+    def setup_method(self):
         pass
 
-    def tearDown(self):
+    def teardown_method(self):
         pass
 
-    def create_hann_window_test(self):
+    def test_create_hann_window(self):
         NN = 16, 32, 64
         for N in NN:
             h = hann(N).astype(np.float32)
             h2 = create_Hann_window(N)
             err = np.abs(h - h2)
-            ok_(np.max(err) < 1e-6)
+            assert np.max(err) < 1e-6
 
-    def fft_test(self):
+    def test_fft(self):
         NN = 4, 8, 16, 32, 64
         for N in NN:
             param = phase_only_correlation_parameters()
@@ -75,7 +73,7 @@ class POCTestCase(TestCase):
             )
             output_ref = np.fft.fft(input)
             err = np.abs(output_ref - output_gpu.get())
-            ok_(np.max(err) < 1e-5)
+            assert np.max(err) < 1e-5
 
             fftfunc = poc.module.get_function("applyInverseFFTTest")
             # call the kernel
@@ -89,9 +87,9 @@ class POCTestCase(TestCase):
                 )
             )
             err = np.abs(input - np.real(input_gpu.get()))
-            ok_(np.max(err) < 1e-5)
+            assert np.max(err) < 1e-5
 
-    def stft_test(self):
+    def test_stft(self):
         length = 1024
         NN = 4, 8, 16, 32, 64
         is_use_window = False, True
@@ -116,9 +114,9 @@ class POCTestCase(TestCase):
                 output_ref = output_ref[:,0:input.shape[1]].T
 
                 err = np.abs(output_ref - output_gpu[0].get()/scale)
-                ok_(np.max(err) < 5e-5)
+                assert np.max(err) < 5e-5
 
-    def phase_only_correlation_test(self):
+    def test_phase_only_correlation(self):
         pixel_types = np.uint8, np.float32
         NN = 16, 32, 64
         for p in pixel_types:
@@ -149,7 +147,7 @@ class POCTestCase(TestCase):
                 pocf_ref = np.fft.fftshift(pocf_ref)
 
                 err = np.abs(pocf_ref - pocf)
-                ok_(np.max(err) < 2e-7)
+                assert np.max(err) < 2e-7
 
                 shift = int(np.argmax(pocf) - (N//2))
-                ok_(shift_ref == shift)
+                assert shift_ref == shift

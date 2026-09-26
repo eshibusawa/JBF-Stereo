@@ -22,8 +22,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from unittest import TestCase
-from nose.tools import ok_
 
 import numpy as np
 import cv2
@@ -42,15 +40,15 @@ def create_grid():
     xyz = xyz.reshape(3, -1)
     return xyz
 
-class OpenCVFisheyeTestCase(TestCase):
-    def setUp(self):
+class TestOpenCVFisheye:
+    def setup_method(self):
         self.eps_mm = 1E-1
         self.kb_camera = kbcm.get_default_camera()
 
-    def tearDown(self):
+    def teardown_method(self):
         pass
 
-    def project_unproject_test(self):
+    def test_project_unproject(self):
         xyz = create_grid()
         xy = self.kb_camera.project(xyz)
         if False:
@@ -64,4 +62,4 @@ class OpenCVFisheyeTestCase(TestCase):
         xyz2 = s * xyz2
 
         err = np.abs(xyz - xyz2)
-        ok_(np.max(err) < self.eps_mm)
+        assert np.max(err) < self.eps_mm
