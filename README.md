@@ -21,13 +21,15 @@ see more detail for [ELAS](./Python/ELAS/README.md).
 see more detail for [TGV](./Python/TGV/README.md).
 
 ## Requirements
-***JBF-Stereo*** requires the following libraries:
+***JBF-Stereo*** requires an NVIDIA GPU with a CUDA driver and conda (Miniconda / Anaconda).
+The following libraries are installed from conda by [Python/environment_min.yaml](./Python/environment_min.yaml):
 + cupy
 + opencv
 + scipy
-+ nose (only for testing)
++ pytest (only for testing)
 ```sh
-pip install -r requirement.txt
+conda env create -f Python/environment_min.yaml
+conda activate jbf-stereo-20260921
 ```
 
 ## Usage

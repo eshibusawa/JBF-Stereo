@@ -1,0 +1,13 @@
+name: jbf-stereo-20260921
+channels:
+  - conda-forge
+dependencies:
+  - cuda-version=12.9
+  - cupy
+  - ipython
+  - py-opencv
+  - pybind11
+  - pytest
+  - python=3.12.*
+  - scipy
+prefix: /path/to/your/envs/jbf-stereo-20260921
