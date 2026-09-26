@@ -30,6 +30,7 @@ from colormap import disparity_to_colormap
 
 from stereo_demo import jbf_demo
 from stereo_demo import patch_match_demo
+from stereo_demo import tgv_demo
 from stereo_demo import elas_demo
 
 if __name__ == '__main__':
@@ -51,6 +52,13 @@ if __name__ == '__main__':
     disparity_pm = patch_match_demo(l, r, max_disparity=numDisparities)
     di = disparity_to_colormap(disparity_pm, 1, max_disparity_visualization)
     cv2.imwrite('disparity_pm.png', di)
+
+    print('TGV Demo')
+    disparity_lasw, disparity_tgv = tgv_demo(l, r, max_disparity=numDisparities)
+    di = disparity_to_colormap(disparity_lasw, 0, max_disparity_visualization)
+    cv2.imwrite('disparity_lasw.png', di)
+    di = disparity_to_colormap(disparity_tgv, 0, max_disparity_visualization)
+    cv2.imwrite('disparity_tgv.png', di)
 
     print('ELAS Demo')
     l = cv2.imread('../data/conesH/im2.png', cv2.IMREAD_GRAYSCALE)

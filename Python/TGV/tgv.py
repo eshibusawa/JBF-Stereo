@@ -28,7 +28,6 @@ import os
 import numpy as np
 
 import add_path
-import add_environment
 import cupy as cp
 import texture
 from util_cuda import upload_constant
@@ -45,7 +44,7 @@ class TGV:
     def __init__(self, params):
         self.params = params
         self.gpu_module = None
-        self.gpu_module_nvcc = None
+        self.gpu_module_cub = None
         self.is_setuped = False
 
     def compile_module(self):
@@ -97,7 +96,7 @@ class TGV:
         self.gpu_module = cp.RawModule(code=cuda_source)
         self.gpu_module.compile()
 
-    def compile_module_nvcc(self):
+    def compile_module_cub(self):
         dn = os.path.dirname(__file__)
         fnl = list()
         fnl.append(os.path.join(dn, 'tgv_cub.cu'))
@@ -115,14 +114,14 @@ class TGV:
         cuda_source = cuda_source.replace('TGV_MAX_DISPARITY', str(self.params.max_disparity))
         cuda_source = cuda_source.replace('TGV_LAMBDA_D', str(self.params.lambda_d))
 
-        self.gpu_module_nvcc = cp.RawModule(code=cuda_source, backend='nvcc')
-        self.gpu_module_nvcc.compile()
+        self.gpu_module_cub = cp.RawModule(code=cuda_source)
+        self.gpu_module_cub.compile()
 
     def setup_module(self):
         if self.gpu_module is None:
             self.compile_module()
-        if self.gpu_module_nvcc is None:
-            self.compile_module_nvcc()
+        if self.gpu_module_cub is None:
+            self.compile_module_cub()
         if self.is_setuped:
             return
 
@@ -343,7 +342,7 @@ class TGV:
         assert self.aggregated_cost.flags.c_contiguous
         assert self.var_u.flags.c_contiguous
 
-        gpu_func = self.gpu_module_nvcc.get_function('updateAuxiliaryVariable')
+        gpu_func = self.gpu_module_cub.get_function('updateAuxiliaryVariable')
         sz_block = self.params.max_disparity, 1
         sz_grid = self.img_ref.shape[1], self.img_ref.shape[0]
         gpu_func(

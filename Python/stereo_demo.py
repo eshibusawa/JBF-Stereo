@@ -31,6 +31,8 @@ from jbf import joint_bilateral_filter_parameters as jbf_param
 from patch_match import patch_match_stereo
 from elas import ELAS as elas
 from elas_params import elas_params as elas_param
+from tgv import TGV as tgv
+from tgv_params import tgv_params as tgv_param
 
 def jbf_demo(l, r, max_disparity, max_disparity_visualization):
     stereo = cv2.StereoBM_create(numDisparities=max_disparity, blockSize=7)
@@ -88,3 +90,12 @@ def elas_demo(l, r):
     e.process(l, r)
 
     return e.get_disparity()
+
+def tgv_demo(l, r, max_disparity):
+    p = tgv_param()
+    p.max_disparity = max_disparity
+    t = tgv(p)
+    t.setup_module()
+    t.process(l, r)
+
+    return t.get_disparity('LASW'), t.get_disparity('TGV')

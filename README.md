@@ -34,11 +34,7 @@ conda activate jbf-stereo-20260921
 
 ## Usage
 ```sh
-# compute disparity using block matching and apply JBF, PM, ELAS
-python Python/stereo_main.py
-```
-```sh
-# compute disparity using TGV
-# this demo requires CUDAToolkit and executable nvcc
-python Python/stereo_main_nvcc.py
+cd Python
+# compute disparity using block matching and apply JBF, PM, TGV, ELAS
+python stereo_main.py
 ```
