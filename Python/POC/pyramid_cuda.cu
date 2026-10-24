@@ -1,5 +1,5 @@
 // This file is part of JBF-Stereo.
-// Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+// Copyright (c) 2022-2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -22,11 +22,23 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Reads the texel (x, y) of a texture of srcWidth x srcHeight; x and y may be outside of the image (address mode of the texture).
+__device__ inline float fetch(cudaTextureObject_t tex, int x, int y, int srcWidth, int srcHeight)
+{
+#if POC_NORMALIZED_COORDS
+	return tex2D<float>(tex, (x + 0.5f) / srcWidth, (y + 0.5f) / srcHeight);
+#else
+	return tex2D<float>(tex, x, y);
+#endif
+}
+
 extern "C" __global__ void downSampling(
 	float* output,
 	cudaTextureObject_t texImage,
 	int width,
-	int height)
+	int height,
+	int srcWidth,
+	int srcHeight)
 {
 	const int indexX = blockIdx.x * blockDim.x + threadIdx.x;
 	const int indexY = blockIdx.y * blockDim.y + threadIdx.y;
@@ -36,10 +48,10 @@ extern "C" __global__ void downSampling(
 	}
 	const int index = indexX + indexY * width;
     float tmp;
-    tmp = fmaf(0.25f, tex2D<float>(texImage, 2 * indexX,     2 * indexY), 0);
-    tmp = fmaf(0.25f, tex2D<float>(texImage, 2 * indexX + 1, 2 * indexY), tmp);
-    tmp = fmaf(0.25f, tex2D<float>(texImage, 2 * indexX,     2 * indexY + 1), tmp);
-    tmp = fmaf(0.25f, tex2D<float>(texImage, 2 * indexX + 1, 2 * indexY + 1), tmp);
+    tmp = fmaf(0.25f, fetch(texImage, 2 * indexX,     2 * indexY,     srcWidth, srcHeight), 0);
+    tmp = fmaf(0.25f, fetch(texImage, 2 * indexX + 1, 2 * indexY,     srcWidth, srcHeight), tmp);
+    tmp = fmaf(0.25f, fetch(texImage, 2 * indexX,     2 * indexY + 1, srcWidth, srcHeight), tmp);
+    tmp = fmaf(0.25f, fetch(texImage, 2 * indexX + 1, 2 * indexY + 1, srcWidth, srcHeight), tmp);
     output[index] = tmp;
 }
 
@@ -47,7 +59,9 @@ extern "C" __global__ void upSampling(
 	float* output,
 	cudaTextureObject_t texDisparity,
 	int width,
-	int height)
+	int height,
+	int srcWidth,
+	int srcHeight)
 {
 	const int indexX = blockIdx.x * blockDim.x + threadIdx.x;
 	const int indexY = blockIdx.y * blockDim.y + threadIdx.y;
@@ -56,5 +70,5 @@ extern "C" __global__ void upSampling(
 		return;
 	}
 	const int index = indexX + indexY * width;
-    output[index] = 2 * tex2D<float>(texDisparity, indexX/2, indexY/2);
+    output[index] = 2 * fetch(texDisparity, indexX/2, indexY/2, srcWidth, srcHeight);
 }

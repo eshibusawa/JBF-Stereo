@@ -1,5 +1,5 @@
 # This file is part of JBF-Stereo.
-# Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+# Copyright (c) 2022-2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,31 @@ import cupy as cp
 
 from texture import create_texture_object
 
+# References
+# [1] Shibahara, T., Numa, N., Nagashima, S., Aoki, T., Nakajima, H., & Kobayashi, K. (2008).
+#     一次元位相限定相関法に基づくステレオ画像の高精度サブピクセル対応付け手法
+#     [A high-accuracy sub-pixel correspondence technique using 1D phase-only correlation].
+#     電子情報通信学会論文誌 D [IEICE Transactions on Information and Systems (Japanese edition)], J91-D(9), 2343–2356. (In Japanese)
+
+# The address mode of the textures (the border of the image): zero, mirror (abcd|dcba) or wrap (abcd|abcd).
+# CUDA supports mirror and wrap only with normalized coordinates, the kernels then read the texel (x, y) at ((x + 0.5) / width, (y + 0.5) / height)
+# (POC_NORMALIZED_COORDS); with point filtering this is exact.
+ADDRESS_MODES = {
+    'border': cp.cuda.runtime.cudaAddressModeBorder,
+    'mirror': cp.cuda.runtime.cudaAddressModeMirror,
+    'wrap': cp.cuda.runtime.cudaAddressModeWrap,
+}
+
+def is_normalized_coords(address_mode):
+    assert address_mode in ADDRESS_MODES, 'the address mode must be border, mirror or wrap'
+    return address_mode != 'border'
+
+def create_address_mode_texture(img_gpu, address_mode):
+    return create_texture_object(img_gpu, addressMode = ADDRESS_MODES[address_mode],
+        filterMode = cp.cuda.runtime.cudaFilterModePoint,
+        readMode = cp.cuda.runtime.cudaReadModeElementType,
+        normalizedCoords = int(is_normalized_coords(address_mode)))
+
 def create_Hann_window(length):
     s = 2 * np.pi / (length - 1)
     return (1 - np.cos(s * np.arange(0, length, dtype=np.float32)))/2
@@ -38,10 +63,6 @@ def create_DFT_rotator(length):
     s = -2j * np.pi / length
     return np.exp(s * np.arange(0, length, dtype=np.float32))
 
-def check_two_power(val):
-    p = int(math.log2(val))
-    return val == 2**p
-
 class phase_only_correlation_parameters():
     def __init__(self):
         self.max_disparity = 128
@@ -49,15 +70,23 @@ class phase_only_correlation_parameters():
         self.averaging_window_height = 7
         self.is_use_hann_window = False
         self.is_spectrum_weighting = False
-        self.is_use_dc_suppression = False
+        # subtract the mean of the window (weighted by the Hann window) before the transform
+        self.is_use_dc_cut = True
+        # border of the image: 'mirror' (abcd|dcba), 'wrap' (abcd|abcd) or 'border' (zero); also used by the image pyramid
+        self.address_mode = 'mirror'
 
 class phase_only_correlation():
+    # a window is transformed by min(window_width, 32) lanes of a warp (see poc_cuda.cu)
+    WINDOW_WIDTHS = (8, 16, 32, 64)
+    BLOCK = 32, 4       # 32 lanes (one warp) x 4 rows
+
     def __init__(self, param, pixel_type=np.uint8):
         self.window_width = param.window_width
         self.averaging_window_height = param.averaging_window_height
         self.is_use_hann_window = param.is_use_hann_window
         self.is_spectrum_weighting = param.is_spectrum_weighting
-        self.is_use_dc_suppression = param.is_use_dc_suppression
+        self.is_use_dc_cut = param.is_use_dc_cut
+        self.address_mode = param.address_mode
         self.pixel_type = pixel_type
 
         self.compute_constants()
@@ -69,7 +98,7 @@ class phase_only_correlation():
         self.rotator = create_DFT_rotator(self.window_width)
 
     def compile_module(self):
-        assert check_two_power(self.hann_window.shape[0])
+        assert self.window_width in self.WINDOW_WIDTHS, 'the window width must be 8, 16, 32 or 64'
         assert (self.pixel_type == np.uint8) or (self.pixel_type == np.float32)
 
         fpfn = os.path.join(os.path.dirname(__file__), 'poc_cuda.cu')
@@ -80,14 +109,29 @@ class phase_only_correlation():
         # load raw kernel
         with open(fpfn, 'r') as f:
             cuda_source += f.read()
-        cuda_source = cuda_source.replace('POC_WINDOW_WIDTH', str(self.hann_window.shape[0]))
+        lanes = min(self.window_width, 32)
+        cuda_source = cuda_source.replace('POC_WINDOW_WIDTH', str(self.window_width))
+        cuda_source = cuda_source.replace('POC_LOG2_WINDOW_WIDTH', str(int(math.log2(self.window_width))))
+        cuda_source = cuda_source.replace('POC_LANES', str(lanes))
+        cuda_source = cuda_source.replace('POC_REGS', str(self.window_width // lanes))
+        cuda_source = cuda_source.replace('POC_WINDOWS_PER_WARP', str(32 // lanes))
         cuda_source = cuda_source.replace('POC_AVERAGING_WINDOW_HEIGHT', str(self.averaging_window_height))
         cuda_source = cuda_source.replace('POC_USE_HANN_WINDOW', str(1 if self.is_use_hann_window else 0))
         cuda_source = cuda_source.replace('POC_USE_SPECTRUM_WEIGHTING', str(1 if self.is_spectrum_weighting else 0))
-        cuda_source = cuda_source.replace('POC_USE_DC_SUPPRESSION', str(1 if self.is_use_dc_suppression else 0))
+        cuda_source = cuda_source.replace('POC_USE_DC_CUT', str(1 if self.is_use_dc_cut else 0))
+        cuda_source = cuda_source.replace('POC_NORMALIZED_COORDS', str(int(is_normalized_coords(self.address_mode))))
+        # sum of the window function (the divisor of the weighted mean of the DC cut)
+        window_sum = float(np.sum(self.hann_window.astype(np.float64))) if self.is_use_hann_window else float(self.window_width)
+        cuda_source = cuda_source.replace('POC_WINDOW_SUM', str(window_sum) + 'f')
+        cuda_source = cuda_source.replace('POC_MATH_PI', str(float(np.pi)) + 'f')
         cuda_source = cuda_source.replace('POC_PIXEL_TYPE', 'float' if self.pixel_type == np.float32 else 'unsigned char')
         self.module = cp.RawModule(code=cuda_source)
         self.module.compile()
+
+    def get_launch_configuration(self, width, height):
+        # one window (pixel) per min(window_width, 32) lanes, 32 // lanes windows per warp along x
+        windows_per_warp = 32 // min(self.window_width, 32)
+        return self.BLOCK, (math.ceil(width / windows_per_warp), math.ceil(height / self.BLOCK[1]))
 
     def upload_symbol(self, arr, key, dtype=cp.float32):
         arr_ptr = self.module.get_global(key)
@@ -109,15 +153,9 @@ class phase_only_correlation():
         assert img_gpu.flags.c_contiguous
         assert img_transformed_gpu.flags.c_contiguous
 
-        img_to = create_texture_object(img_gpu, addressMode = cp.cuda.runtime.cudaAddressModeBorder,
-            filterMode = cp.cuda.runtime.cudaFilterModePoint,
-            readMode = cp.cuda.runtime.cudaReadModeElementType)
+        img_to = create_address_mode_texture(img_gpu, self.address_mode)
 
-        if self.pixel_type == np.uint8:
-            sz_block = 32, 32
-        else:
-            sz_block = 32, 16
-        sz_grid = math.ceil(img_gpu.shape[1] / sz_block[0]), math.ceil(img_gpu.shape[0] / sz_block[1])
+        sz_block, sz_grid = self.get_launch_configuration(img_gpu.shape[1], img_gpu.shape[0])
         # call the kernel
         pocfunc = self.module.get_function("applyTransformation")
         pocfunc(
@@ -144,8 +182,7 @@ class phase_only_correlation():
         assert disparity_gpu.flags.c_contiguous
         assert poc_gpu.flags.c_contiguous
 
-        sz_block = 16, 16
-        sz_grid = math.ceil(img_ref_F.shape[1] / sz_block[0]), math.ceil(img_ref_F.shape[0] / sz_block[1])
+        sz_block, sz_grid = self.get_launch_configuration(img_ref_F.shape[1], img_ref_F.shape[0])
         # call the kernel
         pocfunc = self.module.get_function("getPhaseOnlyCorrelation")
         pocfunc(

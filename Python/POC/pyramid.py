@@ -1,5 +1,5 @@
 # This file is part of JBF-Stereo.
-# Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+# Copyright (c) 2022-2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,8 +29,13 @@ import numpy as np
 import cupy as cp
 
 import add_path
-from texture import create_texture_object
-from poc import phase_only_correlation_parameters, phase_only_correlation
+from poc import phase_only_correlation_parameters, phase_only_correlation, create_address_mode_texture, is_normalized_coords
+
+# References
+# [1] Shibahara, T., Numa, N., Nagashima, S., Aoki, T., Nakajima, H., & Kobayashi, K. (2008).
+#     一次元位相限定相関法に基づくステレオ画像の高精度サブピクセル対応付け手法
+#     [A high-accuracy sub-pixel correspondence technique using 1D phase-only correlation].
+#     電子情報通信学会論文誌 D [IEICE Transactions on Information and Systems (Japanese edition)], J91-D(9), 2343–2356. (In Japanese)
 
 class image_pyramid():
     def __init__(self, param):
@@ -41,6 +46,7 @@ class image_pyramid():
                 max_level = l
                 break
         self.max_pyramid_level = max_level
+        self.address_mode = param.address_mode
         self.compile_module()
 
     def compile_module(self):
@@ -48,6 +54,7 @@ class image_pyramid():
         # load raw kernel
         with open(fpfn, 'r') as f:
             cuda_source = f.read()
+        cuda_source = cuda_source.replace('POC_NORMALIZED_COORDS', str(int(is_normalized_coords(self.address_mode))))
         self.module = cp.RawModule(code=cuda_source)
         self.module.compile()
 
@@ -58,9 +65,7 @@ class image_pyramid():
         pyramid = list()
         pyramid.append(img_gpu.get())
         for l in range(self.max_pyramid_level):
-            img_to = create_texture_object(img_gpu, addressMode = cp.cuda.runtime.cudaAddressModeBorder,
-                filterMode = cp.cuda.runtime.cudaFilterModePoint,
-                readMode = cp.cuda.runtime.cudaReadModeElementType)
+            img_to = create_address_mode_texture(img_gpu, self.address_mode)
 
             img_gpu_transformed = cp.empty((img_gpu.shape[0]//2, img_gpu.shape[1]//2), dtype=img_gpu.dtype)
 
@@ -75,7 +80,9 @@ class image_pyramid():
                     img_gpu_transformed.data,
                     img_to,
                     img_gpu_transformed.shape[1],
-                    img_gpu_transformed.shape[0]
+                    img_gpu_transformed.shape[0],
+                    img_gpu.shape[1],
+                    img_gpu.shape[0]
                 )
             )
             img_gpu = img_gpu_transformed
@@ -87,9 +94,7 @@ class image_pyramid():
         d_gpu = cp.array(disprity.astype(np.float32))
         assert d_gpu.flags.c_contiguous
 
-        d_to = create_texture_object(d_gpu, addressMode = cp.cuda.runtime.cudaAddressModeBorder,
-            filterMode = cp.cuda.runtime.cudaFilterModePoint,
-            readMode = cp.cuda.runtime.cudaReadModeElementType)
+        d_to = create_address_mode_texture(d_gpu, self.address_mode)
         du_gpu = cp.zeros(shape, dtype=d_gpu.dtype)
 
         sz_block = 32, 32
@@ -103,8 +108,31 @@ class image_pyramid():
                 du_gpu.data,
                 d_to,
                 du_gpu.shape[1],
-                du_gpu.shape[0]
+                du_gpu.shape[0],
+                d_gpu.shape[1],
+                d_gpu.shape[0]
             )
         )
 
         return du_gpu.get()
+
+    def estimate_disparity(self, poc, img_ref, img_other):
+        """Coarse-to-fine disparity estimation, Sec. 3 of [1].
+
+        The disparity of the coarsest level is 0, every finer level starts from twice the (pixel precision)
+        disparity of the level above, and only the finest level keeps the sub-pixel estimate.
+        poc is a phase_only_correlation of float32 images."""
+        pyramid_ref = self.get_image_pyramid(img_ref)
+        pyramid_other = self.get_image_pyramid(img_other)
+        disparity = None
+        for l in range(self.max_pyramid_level, -1, -1):
+            shape = pyramid_ref[l].shape
+            if disparity is None:
+                disparity = np.zeros(shape, dtype=np.float32)
+            else:
+                disparity = self.upsampling(disparity, shape)
+            poc.get_phase_only_correlation(pyramid_ref[l], pyramid_other[l], np.rint(disparity).astype(np.int32))
+            disparity = poc.get_disparity()[0].get()
+            if l > 0:
+                disparity = np.rint(disparity)
+        return disparity

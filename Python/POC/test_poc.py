@@ -1,5 +1,5 @@
 # This file is part of JBF-Stereo.
-# Copyright (c) 2022, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+# Copyright (c) 2022-2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,7 @@ class TestPOC:
         pass
 
     def test_create_hann_window(self):
-        NN = 16, 32, 64
+        NN = 8, 16, 32, 64
         for N in NN:
             h = hann(N).astype(np.float32)
             h2 = create_Hann_window(N)
@@ -48,7 +48,7 @@ class TestPOC:
             assert np.max(err) < 1e-6
 
     def test_fft(self):
-        NN = 4, 8, 16, 32, 64
+        NN = 8, 16, 32, 64
         for N in NN:
             param = phase_only_correlation_parameters()
             param.window_width = N
@@ -60,7 +60,7 @@ class TestPOC:
             output_gpu = cp.zeros(param.window_width, dtype=cp.complex64)
 
             fftfunc = poc.module.get_function("applyFFTTest")
-            sz_block = 1, 1
+            sz_block = 32, 1       # one warp
             sz_grid = 1, 1
             # call the kernel
             fftfunc(
@@ -91,13 +91,15 @@ class TestPOC:
 
     def test_stft(self):
         length = 1024
-        NN = 4, 8, 16, 32, 64
+        NN = 8, 16, 32, 64
         is_use_window = False, True
         for N in NN:
             for f in is_use_window:
                 param = phase_only_correlation_parameters()
                 param.window_width = N
                 param.is_use_hann_window = f
+                param.is_use_dc_cut = False
+                param.address_mode = 'border'       # scipy.signal.stft pads with zeros
                 poc = phase_only_correlation(param)
 
                 input = (255 * np.random.rand(length)).astype(np.uint8).reshape(1, -1)
@@ -116,9 +118,62 @@ class TestPOC:
                 err = np.abs(output_ref - output_gpu[0].get()/scale)
                 assert np.max(err) < 5e-5
 
+    def test_address_mode(self):
+        # the windows at the border of the image: zero (border), mirror (abcd|dcba) or wrap (abcd|abcd)
+        numpy_mode = {'border': 'constant', 'mirror': 'symmetric', 'wrap': 'wrap'}
+        for address_mode in 'border', 'mirror', 'wrap':
+            for p in np.float32, np.uint8:
+                for N in 16, 64:
+                    for is_hann in False, True:
+                        param = phase_only_correlation_parameters()
+                        param.window_width = N
+                        param.is_use_hann_window = is_hann
+                        param.is_use_dc_cut = False
+                        param.address_mode = address_mode
+                        poc = phase_only_correlation(param, p)
+
+                        img = (255 * np.random.rand(3, 90)).astype(p)
+                        output_gpu = poc.get_transformed_image(img).get()
+
+                        window = create_Hann_window(N).astype(np.float64) if is_hann else np.ones(N)
+                        padded = np.pad(img.astype(np.float64), ((0, 0), (N, N)), mode=numpy_mode[address_mode])
+                        err = 0
+                        scale = 0
+                        for x in range(img.shape[1]):
+                            ref = np.fft.fft(window * padded[1, x + N//2: x + N//2 + N])
+                            err = max(err, np.max(np.abs(output_gpu[1, x] - ref)))
+                            scale = max(scale, np.max(np.abs(ref)))
+                        assert err < 1e-5 * scale, (address_mode, N, is_hann)
+
+    def test_dc_cut(self):
+        # the window function times (signal - weighted mean of the window): the DC of the windowed signal is 0
+        for p in np.float32, np.uint8:
+            for N in 8, 16, 32, 64:
+                for is_hann in False, True:
+                    param = phase_only_correlation_parameters()
+                    param.window_width = N
+                    param.is_use_hann_window = is_hann
+                    param.is_use_dc_cut = True
+                    poc = phase_only_correlation(param, p)
+
+                    img = (100 + 20 * np.random.randn(4, 100)).clip(0, 255).astype(p)
+                    output_gpu = poc.get_transformed_image(img).get()
+
+                    window = create_Hann_window(N).astype(np.float64) if is_hann else np.ones(N)
+                    scale = 0
+                    err = 0
+                    for y in range(img.shape[0]):
+                        for x in range(N//2, img.shape[1] - N//2):
+                            segment = img[y, x - N//2: x + N//2].astype(np.float64)
+                            mean = np.sum(window * segment) / np.sum(window)
+                            ref = np.fft.fft(window * (segment - mean))
+                            err = max(err, np.max(np.abs(output_gpu[y, x] - ref)))
+                            scale = max(scale, np.max(np.abs(np.fft.fft(window * segment))))
+                    assert err < 1e-6 * scale
+
     def test_phase_only_correlation(self):
         pixel_types = np.uint8, np.float32
-        NN = 16, 32, 64
+        NN = 8, 16, 32, 64
         for p in pixel_types:
             for N in NN:
                 length = 2 * N
@@ -126,12 +181,15 @@ class TestPOC:
                 param = phase_only_correlation_parameters()
                 param.window_width = N
                 param.averaging_window_height = 1
+                param.is_use_dc_cut = False
                 param.is_use_hann_window = False
                 param.is_spectrum_weighting = False
 
                 poc = phase_only_correlation(param, p)
 
-                input1 = (255 * np.random.rand(length)).astype(p).reshape(1, -1)
+                # periodic with the window width: the windows of input2 are exact circular shifts of the ones of input1,
+                # the peak is then at the shift (a random signal gives a wrong peak in a few % of the cases)
+                input1 = np.tile((255 * np.random.rand(N)).astype(p), 2).reshape(1, -1)
                 input2 = np.roll(input1, -shift_ref)
                 disparity = np.zeros(input1.shape, dtype=np.int32)
 
@@ -147,7 +205,7 @@ class TestPOC:
                 pocf_ref = np.fft.fftshift(pocf_ref)
 
                 err = np.abs(pocf_ref - pocf)
-                assert np.max(err) < 2e-7
+                assert np.max(err) < 1e-6      # float32 FFT vs float64, the maximum of 300 random inputs is 7e-7
 
                 shift = int(np.argmax(pocf) - (N//2))
                 assert shift_ref == shift
