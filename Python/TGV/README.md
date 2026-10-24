@@ -2,7 +2,8 @@
 ***TGV-GPU*** is a GPU implementation for the Total Generalized Variation (TGV) stereo algorithm [1].
 Based on the original paper, for initialization, the author uses the Census transformation based locally adaptive support-weight aggregation [2] and WTA.
 For the anisotropic diffusion tensor computation [3] the implementation uses the consistent gradient operator [5].
-Although this is a full GPU implementation edge-segment based adaptive regularization based on the LSD [4] is NOT implemented.
+Except for the optional LSD (OpenCV, on the CPU) this is a full GPU implementation.
+The edge-segment based adaptive regularization of [1] with the LSD [4] is optional (`enable_lsd`, off by default).
 For exhaustive search of regularized cost function the author adopts [CUB](https://nvlabs.github.io/cub/)'s block reduce algorithm.
 The result is not so impressive, so any comments, bug fix and improvements are welcome.
 

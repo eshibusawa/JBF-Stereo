@@ -1,5 +1,5 @@
 # This file is part of JBF-Stereo.
-# Copyright (c) 2023, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+# Copyright (c) 2023-2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -25,10 +25,12 @@
 import math
 import os
 
+import cv2
 import numpy as np
 
 import add_path
 import cupy as cp
+import cupyx.scipy.ndimage as ndi
 import texture
 from util_cuda import upload_constant
 
@@ -39,6 +41,8 @@ from util_cuda import upload_constant
 #     IEEE transactions on pattern analysis and machine intelligence, 28(4), 650-656.
 # [3] Werlberger, M., Trobin, W., Pock, T., Wedel, A., Cremers, D., & Bischof, H. (2009).
 #     Anisotropic Huber-L1 Optical Flow. In BMVC (Vol. 1, No. 2, p. 3).
+# [4] Von Gioi, R. G., Jakubowicz, J., Morel, J. M., & Randall, G. (2008).
+#     LSD: A fast line segment detector with a false detection control. IEEE transactions on pattern analysis and machine intelligence, 32(4), 722-732.
 
 class TGV:
     def __init__(self, params):
@@ -236,9 +240,10 @@ class TGV:
         cp.cuda.runtime.deviceSynchronize()
         self.d_LASW = cp.argmin(self.aggregated_cost, axis=2).astype(cp.int32)
 
-    def compute_anisotropic_diffusion_tensor(self):
-        self.var_G = cp.empty((*self.img_ref.shape, 3), dtype=np.float32)
-        assert self.var_G.flags.c_contiguous
+    def compute_tensor(self, to_image):
+        """The anisotropic diffusion tensor (xx, xy, yy) of Eq. 2 [1] of the image of the texture object to_image."""
+        tensor = cp.empty((*self.img_ref.shape, 3), dtype=np.float32)
+        assert tensor.flags.c_contiguous
 
         gpu_func = self.gpu_module.get_function('computeAnisotropicDiffusionTensor')
         sz_block = 32, 32
@@ -247,13 +252,62 @@ class TGV:
             block=sz_block,
             grid=sz_grid,
             args=(
-                self.var_G,
-                self.to_ref,
+                tensor,
+                to_image,
                 self.img_ref.shape[0],
                 self.img_ref.shape[1]
             )
         )
         cp.cuda.runtime.deviceSynchronize()
+        return tensor
+
+    def compute_anisotropic_diffusion_tensor(self):
+        # the gradient of the tensor is taken on a Gaussian smoothed image ([1]: the spatial context by a prior Gaussian convolution)
+        to_tensor = self.to_ref
+        if self.params.tensor_gradient_sigma > 0:
+            smoothed = ndi.gaussian_filter(self.img_ref.astype(cp.float32), self.params.tensor_gradient_sigma, mode='nearest')
+            smoothed = cp.ascontiguousarray(cp.clip(cp.rint(smoothed), 0, self.range_max).astype(cp.uint8))
+            to_tensor = texture.create_texture_object(smoothed,
+                addressMode = cp.cuda.runtime.cudaAddressModeBorder,
+                filterMode = cp.cuda.runtime.cudaFilterModePoint,
+                readMode = cp.cuda.runtime.cudaReadModeElementType)
+        self.var_G = self.compute_tensor(to_tensor)
+
+        if self.params.enable_lsd:
+            self.replace_tensor_by_segments(self.compute_segment_mask())
+
+    def compute_segment_mask(self):
+        """Binary mask (255, uint8, in the orientation of the tensor) of the line segments of the LSD [4] of the reference image that are
+        at least lsd_min_length long. The LSD runs on the CPU (OpenCV)."""
+        img = self.img_ref.get()
+        if self.params.enable_flipud:
+            img = np.flipud(img)
+        lines = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD).detect(np.ascontiguousarray(img))[0]
+        mask = np.zeros(img.shape, dtype=np.uint8)
+        if lines is not None:
+            lines = lines.reshape(-1, 4)
+            lengths = np.hypot(lines[:, 2] - lines[:, 0], lines[:, 3] - lines[:, 1])
+            for x1, y1, x2, y2 in lines[lengths >= self.params.lsd_min_length]:
+                cv2.line(mask, (int(round(x1)), int(round(y1))), (int(round(x2)), int(round(y2))), 255, 1)
+        if self.params.enable_flipud:
+            mask = np.flipud(mask)
+        return mask
+
+    def replace_tensor_by_segments(self, mask):
+        """Edge-segment based adaptive regularization [1]: the tensor of the Gaussian smoothed binary mask of the segments (the same
+        computation as Eq. 2 with the mask as the image) replaces the tensor of the image where the smoothed mask is above
+        lsd_band_threshold. The gradient of the smoothed thin line vanishes on the line, so the replaced region is a band around it."""
+        smoothed = cv2.GaussianBlur(mask.astype(np.float32) / 255, (0, 0), self.params.lsd_sigma)
+        band = smoothed > self.params.lsd_band_threshold
+        if self.params.lsd_normalize_mask and smoothed.max() > 0:
+            smoothed = smoothed / smoothed.max()
+        img = cp.ascontiguousarray(cp.asarray(np.clip(np.rint(self.range_max * smoothed), 0, self.range_max).astype(np.uint8)))
+        to_mask = texture.create_texture_object(img,
+            addressMode = cp.cuda.runtime.cudaAddressModeBorder,
+            filterMode = cp.cuda.runtime.cudaFilterModePoint,
+            readMode = cp.cuda.runtime.cudaReadModeElementType)
+        tensor = self.compute_tensor(to_mask)
+        self.var_G = cp.where(cp.asarray(band)[..., None], tensor, self.var_G)
 
     def initialize_primal_and_dual_variables(self):
         # primal variable u, auxiliary variable a in Eq. 4 [1]

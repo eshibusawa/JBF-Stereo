@@ -1,5 +1,5 @@
 # This file is part of JBF-Stereo.
-# Copyright (c) 2023, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+# Copyright (c) 2023-2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,8 @@ import math
 #     IEEE transactions on pattern analysis and machine intelligence, 28(4), 650-656.
 # [3] Werlberger, M., Trobin, W., Pock, T., Wedel, A., Cremers, D., & Bischof, H. (2009).
 #     Anisotropic Huber-L1 Optical Flow. In BMVC (Vol. 1, No. 2, p. 3).
+# [4] Von Gioi, R. G., Jakubowicz, J., Morel, J. M., & Randall, G. (2008).
+#     LSD: A fast line segment detector with a false detection control. IEEE transactions on pattern analysis and machine intelligence, 32(4), 722-732.
 
 class tgv_params:
     def __init__(self):
@@ -47,6 +49,14 @@ class tgv_params:
         # settings of [3]
         self.tensor_a = 5.0
         self.tensor_b = 0.5
+        # standard deviation [pixel] of the Gaussian smoothing of the image before the gradient of the tensor (0: none)
+        self.tensor_gradient_sigma = 1.0
+        # edge-segment based adaptive regularization of [1] with the line segments of the LSD [4] (OpenCV, on the CPU); off by default
+        self.enable_lsd = False
+        self.lsd_min_length = 30             # the shortest segment [pixel]
+        self.lsd_sigma = 2.0                 # standard deviation [pixel] of the Gaussian smoothing of the binary mask of the segments
+        self.lsd_band_threshold = 0.05       # the tensor is replaced where the smoothed mask (peak: 0.4 / sigma for a thin line) is above this
+        self.lsd_normalize_mask = False      # scale the smoothed mask so that its peak is 1 (a stronger weight)
         # Middlebury settings of [1]
         self.tau_u = 1/math.sqrt(12)
         self.tau_v = 1/math.sqrt(8)

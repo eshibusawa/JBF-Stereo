@@ -1,5 +1,5 @@
 // This file is part of JBF-Stereo.
-// Copyright (c) 2023, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+// Copyright (c) 2023-2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -52,9 +52,6 @@ extern "C" __global__ void updateAuxiliaryVariable(
 	const float smoothnessTerm = (L[indexXY] + u_a / (2 * theta_n)) * u_a;
 	const float energy = dataTerm + smoothnessTerm;
 
-	__shared__ float energyShared[(TGV_MAX_DISPARITY)];
-	energyShared[indexD] = energy;
-	__syncthreads();
 	typedef cub::KeyValuePair<int, float> KeyValuePairT;
 	typedef cub::BlockReduce<KeyValuePairT, TGV_MAX_DISPARITY> BlockReduceT;
 	__shared__ typename BlockReduceT::TempStorage tempStorage;
@@ -68,13 +65,22 @@ extern "C" __global__ void updateAuxiliaryVariable(
 		a[indexXY] = minPair.key / m;
 		if ((minPair.key > 0) && ((minPair.key + 1 < (TGV_MAX_DISPARITY))))
 		{
-			// subdisparity refinemt Eq. 10 in [1]
+			// subdisparity refinement Eq. 10 in [1]: the minimum of the parabola of the data cost (the three costs at the minimum and
+			// its neighbors) plus the quadratic terms of the energy of the auxiliary variable, in units of the normalized disparity.
+			// The parabola is fitted to the cost alone (the energy contains lambda, L and theta, which Eq. 10 adds itself) and the sign of L
+			// is the one of the energy L (u - a) + (u - a)^2 / (2 theta) minimized above
 			const float lambda = static_cast<float>(TGV_LAMBDA_D);
-			const float &t_minus = energyShared[minPair.key - 1], &t = energyShared[minPair.key], &t_plus = energyShared[minPair.key + 1];
-			const float aParabola = fmaf(0.5f, t_plus + t_minus, -t), bParabola = 0.5f * (t_plus - t_minus);
-			const float t_nume = (u[indexXY] - a[indexXY]) / (theta_n * m) - fmaf(lambda, bParabola, L[indexXY] / m);
+			const int base = indexXY * (TGV_MAX_DISPARITY) + minPair.key;
+			const float c_minus = cost[base - 1] / static_cast<float>(TGV_CENSUS_LENGTH);
+			const float c = cost[base] / static_cast<float>(TGV_CENSUS_LENGTH);
+			const float c_plus = cost[base + 1] / static_cast<float>(TGV_CENSUS_LENGTH);
+			const float aParabola = fmaf(0.5f, c_plus + c_minus, -c), bParabola = 0.5f * (c_plus - c_minus);
+			const float t_nume = (u[indexXY] - a[indexXY]) / (theta_n * m) + L[indexXY] / m - lambda * bParabola;
 			const float t_denom = fmaf(2 * lambda, m * aParabola, 1.f / (theta_n * m));
-			a[indexXY] += (t_nume / t_denom);
+			if (t_denom > 1e-12f)
+			{
+				a[indexXY] += (t_nume / t_denom);
+			}
 		}
 		L[indexXY] = L[indexXY] + (u[indexXY] - a[indexXY]) / (2 * theta_n);
 	}

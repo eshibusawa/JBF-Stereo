@@ -1,5 +1,5 @@
 // This file is part of JBF-Stereo.
-// Copyright (c) 2023, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
+// Copyright (c) 2023-2026, Eijiro Shibusawa <phd_kimberlite@yahoo.co.jp>
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -203,7 +203,8 @@ extern "C" __global__ void computeAnisotropicDiffusionTensor(
 	{
 		n = make_float2(g.x / gNorm, g.y / gNorm);
 	}
-	float e = expf(-static_cast<float>(TGV_TENSOR_A) * powf(gNorm, static_cast<float>(TGV_TENSOR_B)));
+	// the weights a, b of [3] are for an image in [0, 1]: normalize the gradient of the image in [0, TGV_RANGE_MAX]
+	float e = expf(-static_cast<float>(TGV_TENSOR_A) * powf(gNorm / static_cast<float>(TGV_RANGE_MAX), static_cast<float>(TGV_TENSOR_B)));
 	e = fmaxf(e, static_cast<float>(TGV_TENSOR_EPS));
 	// n = (n.y, n.x)
 	// nT = (n.y, -n.x)
@@ -297,14 +298,25 @@ extern "C" __global__ void updatePrimalVariables(
 	}
 
 	const float inv_theta_n = 1.f / theta_n;
+	// The gradient is the forward difference with the Neumann boundary: it is zero at the last column / row, so the pixel there does
+	// not contribute to the divergence (the exact adjoint, the divergence is the backward difference with the Dirichlet boundary).
+	const float rx = (indexX + 1 < width) ? 1.f : 0.f, ry = (indexY + 1 < height) ? 1.f : 0.f;
 	// divergence
 	float2 Gp = make_float2(fmaf(G[indexXY].x, p[indexXY].x, G[indexXY].y * p[indexXY].y),
 							fmaf(G[indexXY].y, p[indexXY].x, G[indexXY].z * p[indexXY].y));
-	float2 Gp_minus_x = make_float2(fmaf(G[indexXY].x, p_minus_x.x, G[indexXY].y * p_minus_x.y),
-									fmaf(G[indexXY].y, p_minus_x.x, G[indexXY].z * p_minus_x.y));
-	float2 Gp_minus_y = make_float2(fmaf(G[indexXY].x, p_minus_y.x, G[indexXY].y * p_minus_y.y),
-									fmaf(G[indexXY].y, p_minus_y.x, G[indexXY].z * p_minus_y.y));
-	const float p_div = Gp.x - Gp_minus_x.x + Gp.y - Gp_minus_y.y;
+	// G p of the neighbors: G of the neighbor itself multiplies its p
+	float2 Gp_minus_x = make_float2(0, 0), Gp_minus_y = make_float2(0, 0);
+	if (indexX - 1 >= 0)
+	{
+		Gp_minus_x = make_float2(fmaf(G[indexXY - 1].x, p_minus_x.x, G[indexXY - 1].y * p_minus_x.y),
+								 fmaf(G[indexXY - 1].y, p_minus_x.x, G[indexXY - 1].z * p_minus_x.y));
+	}
+	if (indexY - 1 >= 0)
+	{
+		Gp_minus_y = make_float2(fmaf(G[indexXY - width].x, p_minus_y.x, G[indexXY - width].y * p_minus_y.y),
+								 fmaf(G[indexXY - width].y, p_minus_y.x, G[indexXY - width].z * p_minus_y.y));
+	}
+	const float p_div = rx * Gp.x - Gp_minus_x.x + ry * Gp.y - Gp_minus_y.y;
 	// candidate
 	const float nume_u = (u[indexXY] + static_cast<float>(TGV_TAU_U) * (p_div - L[indexXY] + a[indexXY] * inv_theta_n));
 	const float denom_u = (1 + static_cast<float>(TGV_TAU_U) * inv_theta_n);
@@ -313,8 +325,8 @@ extern "C" __global__ void updatePrimalVariables(
 	u[indexXY] = u_candidate;
 
 	// divergence
-	const float2 q_div = make_float2(q[indexXY].x - q_minus_x.x + q[indexXY].y - q_minus_y.y,
-	q[indexXY].y - q_minus_x.y + q[indexXY].z - q_minus_y.z);
+	const float2 q_div = make_float2(rx * q[indexXY].x - q_minus_x.x + ry * q[indexXY].y - q_minus_y.y,
+									 rx * q[indexXY].y - q_minus_x.y + ry * q[indexXY].z - q_minus_y.z);
 	// candidate
 	float2 v_candidate = v[indexXY] + static_cast<float>(TGV_TAU_V) * (p[indexXY] + q_div);
 	v_[indexXY] = 2 * v_candidate - v[indexXY];
